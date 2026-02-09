@@ -1,19 +1,27 @@
 secrets:
-  postgresPassword: "REPLACE_ME"
-  grafanaAdminPassword: "REPLACE_ME"
+  postgresPassword: cityflow_dev_password
+  grafanaAdminPassword: admin
+  jwtSecret: dev-secret-change-me
+  redisPassword: ""
 
 mosquitto:
   config:
     allowAnonymous: false
 
+redis:
+  image: redis:7-alpine
+  persistence:
+    size: 2Gi
+
 collector:
-  image: ghcr.io/your-org/cityflow-collector:latest
+  image: ghcr.io/2zrhun/cityflow-collector:latest
+  redisUrl: "redis://redis:6379/0"
 
 simulator:
-  image: ghcr.io/your-org/cityflow-simulator:latest
+  image: ghcr.io/2zrhun/cityflow-simulator:latest
 
 backendApiAuth:
-  image: ghcr.io/your-org/cityflow-backend-api-auth:latest
+  image: ghcr.io/2zrhun/cityflow-backend-api-auth:latest
 
 loki:
   image: grafana/loki:2.9.8

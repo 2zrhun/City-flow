@@ -28,6 +28,8 @@ spec:
               value: {{ .Values.collector.mqttTopic | quote }}
             - name: METRICS_ADDR
               value: {{ .Values.collector.metricsAddr | quote }}
+            - name: REDIS_URL
+              value: {{ .Values.collector.redisUrl | quote }}
           readinessProbe:
             httpGet:
               path: /health

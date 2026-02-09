@@ -43,6 +43,26 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: DB_SSLMODE
               value: {{ .Values.backendApiAuth.env.dbSSLMode | quote }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cityflow-secrets
+                  key: JWT_SECRET
+            - name: JWT_EXPIRY_HOURS
+              value: {{ .Values.backendApiAuth.env.jwtExpiryHours | quote }}
+            - name: REDIS_HOST
+              value: {{ .Values.backendApiAuth.env.redisHost | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.backendApiAuth.env.redisPort | quote }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cityflow-secrets
+                  key: REDIS_PASSWORD
+            - name: REDIS_DB
+              value: {{ .Values.backendApiAuth.env.redisDb | quote }}
+            - name: CORS_ALLOWED_ORIGINS
+              value: {{ .Values.backendApiAuth.env.corsAllowedOrigins | quote }}
           readinessProbe:
             httpGet:
               path: /health

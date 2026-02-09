@@ -7,6 +7,8 @@ secrets:
   postgresPassword: cityflow_dev_password
   grafanaAdminUser: admin
   grafanaAdminPassword: admin
+  jwtSecret: dev-secret-change-me
+  redisPassword: ""
 
 mosquitto:
   enabled: true
@@ -27,11 +29,23 @@ timescaledb:
     enabled: true
     size: 10Gi
 
+redis:
+  enabled: true
+  image: redis:7-alpine
+  password: ""
+  service:
+    type: ClusterIP
+    port: 6379
+  persistence:
+    enabled: true
+    size: 1Gi
+
 collector:
   enabled: true
   image: cityflow/collector:latest
   mqttTopic: cityflow/traffic/+
   metricsAddr: ":8080"
+  redisUrl: "redis://redis:6379/0"
   service:
     type: ClusterIP
     port: 8080
@@ -45,6 +59,11 @@ backendApiAuth:
   env:
     serverPort: "8080"
     dbSSLMode: disable
+    jwtExpiryHours: "24"
+    redisHost: redis
+    redisPort: "6379"
+    redisDb: "0"
+    corsAllowedOrigins: "*"
 
 simulator:
   enabled: true
