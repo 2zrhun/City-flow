@@ -62,6 +62,16 @@ prometheus:
     enabled: true
     size: 5Gi
 
+loki:
+  enabled: true
+  image: grafana/loki:2.9.8
+  service:
+    type: ClusterIP
+    port: 3100
+  persistence:
+    enabled: true
+    size: 5Gi
+
 grafana:
   enabled: true
   image: grafana/grafana:latest
