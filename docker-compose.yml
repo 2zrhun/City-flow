@@ -6,6 +6,8 @@ services:
       - "1883:1883"
     volumes:
       - ./ops/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    networks:
+      - cityflow
     restart: unless-stopped
 
   timescaledb:
@@ -18,12 +20,15 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - cityflow_tsdb_data:/var/lib/postgresql/data
+      - tsdb_data:/var/lib/postgresql/data
+      - ./ops/timescaledb/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cityflow} -d ${POSTGRES_DB:-cityflow}"]
       interval: 10s
       timeout: 5s
       retries: 8
+    networks:
+      - cityflow
     restart: unless-stopped
 
   backend-api-auth:
@@ -43,7 +48,9 @@ services:
       timescaledb:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "8081:8080"
+    networks:
+      - cityflow
     restart: unless-stopped
 
   prometheus:
@@ -57,7 +64,9 @@ services:
       - "9090:9090"
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - cityflow_prometheus_data:/prometheus
+      - prometheus_data:/prometheus
+    networks:
+      - cityflow
     restart: unless-stopped
 
   grafana:
@@ -69,13 +78,55 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - cityflow_grafana_data:/var/lib/grafana
+      - grafana_data:/var/lib/grafana
       - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
+    networks:
+      - cityflow
     restart: unless-stopped
 
+  simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    container_name: cityflow-simulator
+    environment:
+      MQTT_URL: mqtt://mosquitto:1883
+      PUBLISH_INTERVAL_MS: ${SIM_PUBLISH_INTERVAL_MS:-2000}
+      SENSOR_COUNT: ${SIM_SENSOR_COUNT:-10}
+    depends_on:
+      - mosquitto
+    networks:
+      - cityflow
+    restart: unless-stopped
+
+  collector:
+    build:
+      context: ./services/collector
+      dockerfile: Dockerfile
+    container_name: cityflow-collector
+    environment:
+      DB_DSN: postgres://${POSTGRES_USER:-cityflow}:${POSTGRES_PASSWORD:-cityflow_dev_password}@timescaledb:5432/${POSTGRES_DB:-cityflow}?sslmode=disable
+      MQTT_URL: tcp://mosquitto:1883
+      MQTT_TOPIC: cityflow/traffic/+
+      METRICS_ADDR: :8080
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    networks:
+      - cityflow
+    restart: unless-stopped
+
+networks:
+  cityflow:
+    name: cityflow-net
+
 volumes:
-  cityflow_tsdb_data:
-  cityflow_prometheus_data:
-  cityflow_grafana_data:
+  tsdb_data:
+  prometheus_data:
+  grafana_data:

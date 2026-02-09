@@ -239,6 +239,7 @@ Done attendu:
 Prerequis:
 
 - Docker Desktop + Compose
+- `kubectl` (pour K3s)
 
 Commandes types:
 
@@ -246,11 +247,19 @@ Commandes types:
 # 0) Variables d'environnement
 cp .env.example .env
 
-# 1) Build + start
+# 1) Build + start (tout dockerise)
 docker compose up -d --build
 
-# 2) Verification
+# 2) Verifier les conteneurs
 docker compose ps
+
+# 3) Suivre les logs du simulateur
+docker compose logs -f simulator
+
+# 4) Suivre les logs du collector
+docker compose logs -f collector
+
+# 5) Suivre les logs de l'API auth
 docker compose logs -f backend-api-auth
 ```
 
@@ -263,10 +272,11 @@ docker compose down
 URLs locales:
 
 - API auth: `http://localhost:8080/health`
-- Grafana: `http://localhost:3000`
+- Grafana: `http://localhost:3000` (admin/admin par defaut)
 - Prometheus: `http://localhost:9090`
 - MQTT broker: `localhost:1883`
 - TimescaleDB/Postgres: `localhost:5432`
+- Collector metrics/health: `http://localhost:8080/metrics`, `http://localhost:8080/health`
 
 ## 8) Deploiement K3s (minimum)
 
