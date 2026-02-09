@@ -1,0 +1,81 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: cityflow-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./ops/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: cityflow-timescaledb
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cityflow}
+      POSTGRES_USER: ${POSTGRES_USER:-cityflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cityflow_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - cityflow_tsdb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cityflow} -d ${POSTGRES_DB:-cityflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    restart: unless-stopped
+
+  backend-api-auth:
+    build:
+      context: ./Backend_API_Auth
+      dockerfile: Dockerfile
+    container_name: cityflow-backend-api-auth
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      DB_HOST: timescaledb
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-cityflow}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cityflow_dev_password}
+      DB_NAME: ${POSTGRES_DB:-cityflow}
+      DB_SSLMODE: disable
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cityflow-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - cityflow_prometheus_data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cityflow-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    ports:
+      - "3000:3000"
+    volumes:
+      - cityflow_grafana_data:/var/lib/grafana
+      - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  cityflow_tsdb_data:
+  cityflow_prometheus_data:
+  cityflow_grafana_data:

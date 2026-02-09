@@ -1,0 +1,73 @@
+global:
+  namespace: cityflow
+
+secrets:
+  postgresDb: cityflow
+  postgresUser: cityflow
+  postgresPassword: cityflow_dev_password
+  grafanaAdminUser: admin
+  grafanaAdminPassword: admin
+
+mosquitto:
+  enabled: true
+  image: eclipse-mosquitto:2
+  service:
+    type: ClusterIP
+    port: 1883
+  config:
+    allowAnonymous: true
+
+timescaledb:
+  enabled: true
+  image: timescale/timescaledb:latest-pg16
+  service:
+    type: ClusterIP
+    port: 5432
+  persistence:
+    enabled: true
+    size: 10Gi
+
+collector:
+  enabled: true
+  image: cityflow/collector:latest
+  mqttTopic: cityflow/traffic/+
+  metricsAddr: ":8080"
+  service:
+    type: ClusterIP
+    port: 8080
+
+backendApiAuth:
+  enabled: true
+  image: cityflow/backend-api-auth:latest
+  service:
+    type: ClusterIP
+    port: 8080
+  env:
+    serverPort: "8080"
+    dbSSLMode: disable
+
+simulator:
+  enabled: true
+  image: cityflow/simulator:latest
+  publishIntervalMs: 2000
+  sensorCount: 10
+
+prometheus:
+  enabled: true
+  image: prom/prometheus:latest
+  service:
+    type: ClusterIP
+    port: 9090
+  persistence:
+    enabled: true
+    size: 5Gi
+
+grafana:
+  enabled: true
+  image: grafana/grafana:latest
+  service:
+    type: ClusterIP
+    port: 3000
+  persistence:
+    enabled: true
+    size: 5Gi

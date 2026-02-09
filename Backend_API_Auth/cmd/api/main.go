@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"yourmodule/config"
+	"traffic-prediction-api/config"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
@@ -22,6 +22,13 @@ func main() {
 	db, err := gorm.Open(postgres.Open(cfg.Database.GetDSN()), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("Failed to get sql db handle: %v", err)
+	}
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatalf("Failed to ping database: %v", err)
 	}
 
 	// Initialize Gin router

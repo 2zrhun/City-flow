@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-api-auth
+  namespace: cityflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend-api-auth
+  template:
+    metadata:
+      labels:
+        app: backend-api-auth
+    spec:
+      containers:
+        - name: backend-api-auth
+          image: cityflow/backend-api-auth:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: DB_HOST
+              value: timescaledb
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: cityflow-secrets
+                  key: POSTGRES_DB
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: cityflow-secrets
+                  key: POSTGRES_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cityflow-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DB_SSLMODE
+              value: disable
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-api-auth
+  namespace: cityflow
+spec:
+  selector:
+    app: backend-api-auth
+  ports:
+    - port: 8080
+      targetPort: 8080

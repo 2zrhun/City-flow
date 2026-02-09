@@ -239,41 +239,39 @@ Done attendu:
 Prerequis:
 
 - Docker Desktop + Compose
-- Go `>= 1.22`
-- Node.js `>= 20`
-- `kubectl` (pour K3s)
 
 Commandes types:
 
 ```bash
-# 1) Infra locale
-docker compose up -d mosquitto timescaledb prometheus grafana
+# 0) Variables d'environnement
+cp .env.example .env
 
-# 2) Simulateur
-cd simulator
-npm install
-npm run dev
+# 1) Build + start
+docker compose up -d --build
 
-# 3) Collector
-cd ../services/collector
-go run .
-
-# 4) Predictor
-cd ../predictor
-go run .
-
-# 5) Rerouter
-cd ../rerouter
-go run .
-
-# 6) API
-cd ../api
-go run .
+# 2) Verification
+docker compose ps
+docker compose logs -f backend-api-auth
 ```
 
-Note: adapte les chemins a la structure reelle du repo.
+Stop:
+
+```bash
+docker compose down
+```
+
+URLs locales:
+
+- API auth: `http://localhost:8080/health`
+- Grafana: `http://localhost:3000`
+- Prometheus: `http://localhost:9090`
+- MQTT broker: `localhost:1883`
+- TimescaleDB/Postgres: `localhost:5432`
 
 ## 8) Deploiement K3s (minimum)
+
+Note: cette section en manifests bruts est conservee pour reference. Pour un setup propre,
+utilise la section `8-bis` (ArgoCD + Helm).
 
 1. Installer K3s local (ou VM Linux locale)
 2. Construire/pusher images
@@ -293,6 +291,55 @@ kubectl apply -f k8s/observability
 kubectl get pods -A
 kubectl get svc -A
 ```
+
+## 8-bis) Workflow recommande: ArgoCD + Helm (cluster-first)
+
+Objectif: piloter les deployments via GitOps des le depart.
+
+### Arborescence ajoutee
+
+- `charts/cityflow`: chart Helm de la stack MVP
+- `argocd/project-cityflow.yaml`: AppProject ArgoCD
+- `argocd/application-cityflow.yaml`: Application ArgoCD pointant sur le chart
+- `scripts/bootstrap-k3s.sh`: install K3s (single node)
+- `scripts/bootstrap-argocd.sh`: install ArgoCD + apply des manifests GitOps
+
+### Etapes
+
+1. Installer K3s (Linux/VM Linux):
+
+```bash
+./scripts/bootstrap-k3s.sh
+```
+
+2. Installer ArgoCD et enregistrer l'app CityFlow:
+
+```bash
+./scripts/bootstrap-argocd.sh
+```
+
+3. Ouvrir ArgoCD:
+
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8081:443
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+4. Adapter le repo Git cible:
+- modifier `repoURL` dans `argocd/application-cityflow.yaml`
+- verifier/adapter `charts/cityflow/values-prod.yaml`
+- commit/push
+- ArgoCD synchronise automatiquement
+
+### Build/push images (important)
+
+Le chart reference par defaut:
+- `cityflow/collector:latest`
+- `cityflow/simulator:latest`
+- `cityflow/backend-api-auth:latest`
+
+Avant sync ArgoCD, builder et pousser ces images dans un registry accessible par le cluster,
+ou modifier `charts/cityflow/values.yaml` pour pointer vers tes images.
 
 ## 9) API minimale (contrat conseille)
 

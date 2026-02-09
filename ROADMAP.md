@@ -162,3 +162,131 @@ Une fonctionnalité est *Done* si :
 - Review croisée recommandée :
   - Walid ↔ Hugo sur features
   - Hamza ↔ Walid sur sécurité/perf
+
+---
+
+## Phase 0 - Dossier de cadrage actionnable
+
+### Validation du perimetre MVP final (inclus / exclu)
+
+#### Inclus dans le MVP
+- Ingestion IoT via MQTT (`cityflow/traffic/{sensor_id}`)
+- Stockage time-series dans TimescaleDB (`traffic_raw`)
+- Service `predictor` avec baseline explicable (T+30)
+- Service `rerouter` par regles (ETA/CO2 indicatif)
+- API minimale (`/health`, `/api/traffic/live`, `/api/predictions`, `/api/reroutes/recommended`, `WS /ws/live`)
+- Dashboard de demo live (carte + graphes + recommandations)
+- Deploiement local conteneurise + runbook demo
+- Observabilite minimale (Prometheus + Grafana + health endpoints)
+
+#### Exclu du MVP (post-MVP / bonus)
+- Modele ML avance (LSTM/XGBoost)
+- Istio/service mesh
+- Multi-tenant, SSO entreprise, IAM avance
+- Haute dispo multi-zone / PRA complet
+- ArgoCD complet (bonus si temps restant)
+- Enrichissement meteo/evenements en production
+
+### User stories MVP priorisees
+
+| ID | Priorite | User story | Owner | Reviewer |
+|---|---|---|---|---|
+| US-01 | P0 | En tant qu'operateur, je vois un flux trafic live ingere depuis MQTT vers la base. | Walid | Hamza |
+| US-02 | P0 | En tant qu'operateur, je consulte les mesures recentes via API pour alimenter le dashboard. | Walid | Hugo |
+| US-03 | P0 | En tant qu'operateur, je recois une prediction de congestion T+30 par axe. | Walid | Hugo |
+| US-04 | P0 | En tant qu'operateur, je vois des recommandations de reroutage en cas de congestion. | Walid | Hugo |
+| US-05 | P0 | En tant qu'admin infra, je deploie et relance la stack localement en une commande. | Hamza | Walid |
+| US-06 | P0 | En tant qu'admin infra, je supervise l'etat des services et les metriques critiques. | Hamza | Walid |
+| US-07 | P1 | En tant qu'operateur, je visualise sur dashboard la carte + graphes live. | Hugo | Walid |
+| US-08 | P1 | En tant qu'admin infra, je securise les credentials et l'acces broker en environnement cible. | Hamza | Walid |
+
+### Criteres d'acceptation (par user story)
+
+- `US-01`
+  - Given le simulateur actif, when 1 minute s'ecoule, then des lignes sont presentes dans `traffic_raw`.
+  - Le collector rejette les messages invalides et incremente un compteur d'erreur.
+- `US-02`
+  - `GET /api/traffic/live` repond en < 500 ms sur jeu de charge nominal.
+  - Le payload contient au minimum `ts`, `road_id`, `speed_kmh`, `flow_rate`, `occupancy`.
+- `US-03`
+  - Une prediction `horizon=30` est produite automatiquement au plus tard toutes les 5 minutes.
+  - Les valeurs sont persistantes en base et exploitables par API/dashboard.
+- `US-04`
+  - Si congestion > seuil defini, au moins une recommandation est generee avec motif.
+  - Les recommandations sont exposables via endpoint dedie.
+- `US-05`
+  - `docker compose up -d --build` demarre les composants MVP sans erreur bloquante.
+  - Un runbook permet a un membre equipe de reproduire la demo en moins de 15 minutes.
+- `US-06`
+  - Chaque service expose `health` et/ou `metrics`.
+  - Prometheus scrape au minimum collector + prometheus; Grafana dispose d'une datasource preconfiguree.
+- `US-07`
+  - Le dashboard affiche carte + graphes live sans blocage UX majeur sur parcours principal.
+  - Les donnees live se rafraichissent automatiquement (polling/WS).
+- `US-08`
+  - Aucun secret reel n'est committe en clair.
+  - En cible, MQTT n'autorise pas `allow_anonymous true`; un mecanisme d'authentification est actif.
+
+### Contraintes infra / securite (Phase 0)
+
+#### Secrets et mots de passe
+- Interdiction de credentials de production dans Git.
+- Fichier `.env.example` autorise uniquement des valeurs de dev.
+- Rotation des secrets avant passage staging/prod.
+- Convention: secrets injectes par variables d'environnement ou secret manager (pas en dur dans le code).
+
+#### Auth MQTT (cible)
+- Local dev: `allow_anonymous true` tolere pour acceleration.
+- Staging/prod: `allow_anonymous false` obligatoire.
+- Auth minimale cible: user/password broker + ACL par topic (`cityflow/traffic/+` en publish, topics strictement necessaires en subscribe).
+
+#### Observabilite minimale
+- Endpoint `health` pour chaque service critique.
+- Endpoint `/metrics` Prometheus pour collector/predictor/rerouter/api.
+- Dashboard Grafana minimum:
+  - Disponibilite services
+  - Debit ingestion (messages/s)
+  - Taux d'erreur ingestion
+  - Latence API p95
+
+#### Contraintes perf / hebergement (MVP)
+- Cible latence ingestion MQTT -> DB: p95 < 2 s.
+- Cible API parcours principal: p95 < 500 ms (hors pics).
+- Capacite nominale MVP: 10-50 capteurs, intervalle 1-2 s.
+- Hebergement MVP: machine locale/dev ou VM unique (pas de HA requise).
+
+### Backlog MVP priorise (owner + reviewer)
+
+| Priorite | Carte | Description | Owner | Reviewer | Definition of done |
+|---|---|---|---|---|---|
+| P0 | BL-01 Setup stack locale | Compose up + health checks services socle | Hamza | Walid | Tous les conteneurs `healthy` + runbook valide |
+| P0 | BL-02 Ingestion MQTT -> DB | Simulateur publie, collector persiste `traffic_raw` | Walid | Hamza | Donnees visibles en DB + metriques collector |
+| P0 | BL-03 Schema DB MVP | Tables `traffic_raw`, `predictions`, `reroutes` creees | Walid | Hamza | Migrations executees sans erreur |
+| P0 | BL-04 Predictor T+30 baseline | Job periodique de prediction persistante | Walid | Hugo | Endpoint/API exploitable + tests mini |
+| P0 | BL-05 Rerouter heuristique | Generation alternatives selon seuil congestion | Walid | Hugo | Resultats consultables et coherents |
+| P0 | BL-06 API minimale + WS | Exposition endpoints MVP + flux live | Walid | Hugo | Contrat respecte + temps reponse cible |
+| P0 | BL-07 Observabilite MVP | Prometheus scrape + Grafana datasource/dashboard | Hamza | Walid | KPI techniques visibles |
+| P0 | BL-08 Hygiene securite MVP | Gestion secrets dev + spec auth MQTT cible | Hamza | Walid | Checklist securite Phase 0 validee |
+| P1 | BL-09 Dashboard demo | Carte + graphes + panneau reroutage | Hugo | Walid | Demo bout en bout validee |
+| P1 | BL-10 Packaging demo | Scripts de demo + README finalise | Hamza | Hugo | Soutenance reproductible |
+
+### Matrice des risques techniques
+
+| ID | Risque | Probabilite | Impact | Mitigation | Owner |
+|---|---|---|---|---|---|
+| R-01 | Glissement de scope MVP | Elevee | Eleve | Geler P0, repousser bonus en P1/P2, revue hebdo scope | Hamza |
+| R-02 | Instabilite broker MQTT | Moyenne | Eleve | Healthcheck, retry client, tests de charge legers | Hamza |
+| R-03 | Saturation DB/latence ecriture | Moyenne | Eleve | Index, hypertable, batch/retention si besoin | Walid |
+| R-04 | Qualite donnees capteurs insuffisante | Moyenne | Moyen | Validation schema payload + rejet + metrique erreur | Walid |
+| R-05 | Prediction non pertinente pour demo | Moyenne | Moyen | Baseline explicable + seuils calibrables + limites assumees | Walid |
+| R-06 | Faille securite (secrets, MQTT anonyme) | Moyenne | Eleve | Regles secrets + auth broker en cible + revue config | Hamza |
+| R-07 | Manque de visibilite incidents | Moyenne | Eleve | Metrics/health obligatoires + dashboard ops minimum | Hamza |
+| R-08 | Dette technique acceleree | Elevee | Moyen | DoD stricte: tests mini + review croisee + doc minimale | Hugo |
+
+### Checklist de sortie Phase 0
+- [ ] Perimetre MVP final valide (in/out)
+- [ ] User stories MVP priorisees et assignees
+- [ ] Criteres d'acceptation valides pour chaque US
+- [ ] Contraintes infra/securite validees (secrets, MQTT cible, observabilite, perf)
+- [ ] Backlog MVP priorise avec owner + reviewer
+- [ ] Matrice risques (probabilite/impact/mitigation/owner) validee en equipe

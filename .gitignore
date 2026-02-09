@@ -1,0 +1,15 @@
+# Env files
+.env
+**/.env
+
+# Node
+node_modules/
+
+# Go build outputs
+bin/
+*.exe
+*.out
+
+# IDE/OS
+.DS_Store
+Thumbs.db
