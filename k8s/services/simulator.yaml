@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator
+  namespace: cityflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simulator
+  template:
+    metadata:
+      labels:
+        app: simulator
+    spec:
+      containers:
+        - name: simulator
+          image: cityflow/simulator:latest
+          env:
+            - name: MQTT_URL
+              value: mqtt://mosquitto:1883
+            - name: PUBLISH_INTERVAL_MS
+              value: "2000"
+            - name: SENSOR_COUNT
+              value: "10"

@@ -1,0 +1,26 @@
+{{- if .Values.simulator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simulator
+  template:
+    metadata:
+      labels:
+        app: simulator
+    spec:
+      containers:
+        - name: simulator
+          image: {{ .Values.simulator.image }}
+          env:
+            - name: MQTT_URL
+              value: mqtt://mosquitto:1883
+            - name: PUBLISH_INTERVAL_MS
+              value: {{ .Values.simulator.publishIntervalMs | quote }}
+            - name: SENSOR_COUNT
+              value: {{ .Values.simulator.sensorCount | quote }}
+{{- end }}

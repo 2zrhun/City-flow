@@ -31,6 +31,28 @@ services:
       - cityflow
     restart: unless-stopped
 
+  backend-api-auth:
+    build:
+      context: ./Backend_API_Auth
+      dockerfile: Dockerfile
+    container_name: cityflow-backend-api-auth
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      DB_HOST: timescaledb
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-cityflow}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cityflow_dev_password}
+      DB_NAME: ${POSTGRES_DB:-cityflow}
+      DB_SSLMODE: disable
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    networks:
+      - cityflow
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:latest
     container_name: cityflow-prometheus

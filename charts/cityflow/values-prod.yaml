@@ -1,0 +1,16 @@
+secrets:
+  postgresPassword: "REPLACE_ME"
+  grafanaAdminPassword: "REPLACE_ME"
+
+mosquitto:
+  config:
+    allowAnonymous: false
+
+collector:
+  image: ghcr.io/your-org/cityflow-collector:latest
+
+simulator:
+  image: ghcr.io/your-org/cityflow-simulator:latest
+
+backendApiAuth:
+  image: ghcr.io/your-org/cityflow-backend-api-auth:latest

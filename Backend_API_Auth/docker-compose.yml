@@ -1,0 +1,35 @@
+services:
+  backend-api-auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cityflow-backend-api-auth
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cityflow-auth-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-cityflow}
+      POSTGRES_USER: ${DB_USER:-cityflow}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cityflow_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-cityflow} -d ${DB_NAME:-cityflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    restart: unless-stopped
+
+volumes:
+  auth_postgres_data:

@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: cityflow
+  namespace: argocd
+spec:
+  description: CityFlow GitOps project
+  sourceRepos:
+    - "*"
+  destinations:
+    - namespace: cityflow
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

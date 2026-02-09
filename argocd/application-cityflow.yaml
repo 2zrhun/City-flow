@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cityflow
+  namespace: argocd
+spec:
+  project: cityflow
+  source:
+    repoURL: https://github.com/your-org/City-flow.git
+    targetRevision: HEAD
+    path: charts/cityflow
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cityflow
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
