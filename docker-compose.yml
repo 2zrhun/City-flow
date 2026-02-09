@@ -83,6 +83,21 @@ services:
       - cityflow
     restart: unless-stopped
 
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: cityflow-promtail
+    command:
+      - -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./ops/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - promtail_positions:/tmp
+    depends_on:
+      - loki
+    networks:
+      - cityflow
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
     container_name: cityflow-grafana
@@ -145,4 +160,5 @@ volumes:
   tsdb_data:
   prometheus_data:
   loki_data:
+  promtail_positions:
   grafana_data:

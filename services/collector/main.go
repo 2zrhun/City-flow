@@ -145,6 +145,7 @@ func processMessage(ctx context.Context, dbPool *pgxpool.Pool, payloadRaw []byte
 	_, err := dbPool.Exec(ctx, `
 		INSERT INTO traffic_raw (ts, sensor_id, road_id, speed_kmh, flow_rate, occupancy)
 		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (ts, sensor_id) DO NOTHING
 	`, ts, payload.SensorID, payload.RoadID, payload.SpeedKMH, payload.FlowRate, payload.Occupancy)
 	if err != nil {
 		msgsFailed.Inc()

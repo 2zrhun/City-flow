@@ -16,32 +16,18 @@ spec:
       containers:
         - name: collector
           image: cityflow/collector:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:
             - name: DB_DSN
-              value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@timescaledb:5432/$(POSTGRES_DB)?sslmode=disable
+              value: postgres://cityflow:cityflow_dev_password@timescaledb:5432/cityflow?sslmode=disable
             - name: MQTT_URL
               value: tcp://mosquitto:1883
             - name: MQTT_TOPIC
               value: cityflow/traffic/+
             - name: METRICS_ADDR
               value: :8080
-            - name: POSTGRES_DB
-              valueFrom:
-                secretKeyRef:
-                  name: cityflow-secrets
-                  key: POSTGRES_DB
-            - name: POSTGRES_USER
-              valueFrom:
-                secretKeyRef:
-                  name: cityflow-secrets
-                  key: POSTGRES_USER
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: cityflow-secrets
-                  key: POSTGRES_PASSWORD
           readinessProbe:
             httpGet:
               path: /health

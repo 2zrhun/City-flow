@@ -16,6 +16,7 @@ spec:
       containers:
         - name: simulator
           image: {{ .Values.simulator.image }}
+          imagePullPolicy: IfNotPresent
           env:
             - name: MQTT_URL
               value: mqtt://mosquitto:1883

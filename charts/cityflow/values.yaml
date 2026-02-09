@@ -72,6 +72,10 @@ loki:
     enabled: true
     size: 5Gi
 
+promtail:
+  enabled: true
+  image: grafana/promtail:2.9.8
+
 grafana:
   enabled: true
   image: grafana/grafana:latest

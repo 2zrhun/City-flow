@@ -275,6 +275,7 @@ URLs locales:
 - Grafana: `http://localhost:3000` (admin/admin par defaut)
 - Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100`
+- Promtail (health): `http://localhost:9080/ready` (compose)
 - MQTT broker: `localhost:1883`
 - TimescaleDB/Postgres: `localhost:5432`
 - Collector metrics/health: `http://localhost:8080/metrics`, `http://localhost:8080/health`

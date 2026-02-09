@@ -16,32 +16,18 @@ spec:
       containers:
         - name: collector
           image: {{ .Values.collector.image }}
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:
             - name: DB_DSN
-              value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@timescaledb:5432/$(POSTGRES_DB)?sslmode=disable
+              value: postgres://{{ .Values.secrets.postgresUser }}:{{ .Values.secrets.postgresPassword }}@timescaledb:5432/{{ .Values.secrets.postgresDb }}?sslmode=disable
             - name: MQTT_URL
               value: tcp://mosquitto:1883
             - name: MQTT_TOPIC
               value: {{ .Values.collector.mqttTopic | quote }}
             - name: METRICS_ADDR
               value: {{ .Values.collector.metricsAddr | quote }}
-            - name: POSTGRES_DB
-              valueFrom:
-                secretKeyRef:
-                  name: cityflow-secrets
-                  key: POSTGRES_DB
-            - name: POSTGRES_USER
-              valueFrom:
-                secretKeyRef:
-                  name: cityflow-secrets
-                  key: POSTGRES_USER
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: cityflow-secrets
-                  key: POSTGRES_PASSWORD
           readinessProbe:
             httpGet:
               path: /health
