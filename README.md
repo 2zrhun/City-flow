@@ -26,7 +26,7 @@ Fonctionnalites optionnelles (si temps restant):
 
 - ArgoCD complet
 - enrichissement meteo/evenements
-- Redis cache live
+- ~~Redis cache live~~ **fait**
 - Istio service mesh
 
 ## 2) Architecture cible
@@ -39,10 +39,10 @@ Architecture en 5 couches:
 - Sortie: messages JSON vers `cityflow/traffic/{sensor_id}`.
 
 2. **Couche ingestion**
-- `mqtt-broker` (Mosquitto/EMQX) centralise les messages.
-- `collector` (Go) consomme MQTT, valide et persiste.
+- `mqtt-broker` (Mosquitto) centralise les messages.
+- `collector` (Go) consomme MQTT, valide, persiste dans TimescaleDB, et publie sur Redis (`cityflow:live`).
 - Entree: topics MQTT.
-- Sortie: table `traffic_raw` dans TimescaleDB.
+- Sortie: table `traffic_raw` dans TimescaleDB + publication Redis pour le temps reel.
 
 3. **Couche intelligence**
 - `predictor` (Go) calcule la congestion `T+30`.
@@ -51,9 +51,9 @@ Architecture en 5 couches:
 - Sortie: tables `predictions` et `reroutes`.
 
 4. **Couche exposition**
-- `api`/`bff` (Go ou Node.js) sert REST + WebSocket.
-- `dashboard` (OpenStreetMap + D3.js) affiche trafic, prediction, reroutage.
-- Entree: TimescaleDB + services metier.
+- `backend-api-auth` (Go/Gin) sert REST + WebSocket avec authentification JWT, cache Redis et pagination cursor.
+- `dashboard` (OpenStreetMap + D3.js) affiche trafic, prediction, reroutage (a construire).
+- Entree: TimescaleDB + Redis (pub/sub pour WebSocket).
 - Sortie: vue operateur temps reel.
 
 5. **Couche operations**
@@ -69,18 +69,20 @@ Architecture en 5 couches:
 |---|---|---|---|
 | simulator | MQTT | collector | Ingestion des mesures trafic |
 | collector | SQL insert | TimescaleDB.traffic_raw | Stockage time-series |
+| collector | Redis PUBLISH | Redis `cityflow:live` | Diffusion temps reel |
 | predictor | SQL read/write | TimescaleDB.predictions | Prevision congestion T+30 |
 | rerouter | SQL read/write | TimescaleDB.reroutes | Recommandations alternatives |
-| api | SQL + HTTP interne | DB + services | Agregation des donnees |
+| api | SQL + Redis cache | DB + Redis | Agregation des donnees (cache 5-30s) |
+| api | WebSocket | Redis SUBSCRIBE | Flux live via pub/sub |
 | dashboard | REST + WebSocket | api | Affichage live operateur |
 | services | HTTP `/metrics` | prometheus | Observabilite |
 
 ### Flux principal (ordre d execution)
 
-1. `simulator -> mqtt-broker -> collector -> traffic_raw`
-2. `predictor -> predictions`
-3. `rerouter -> reroutes`
-4. `api -> dashboard (REST + WS)`
+1. `simulator -> mqtt-broker -> collector -> traffic_raw + Redis PUBLISH`
+2. `predictor -> predictions` (a construire)
+3. `rerouter -> reroutes` (a construire)
+4. `api (REST + cache Redis + WS via Redis sub) -> dashboard`
 5. `prometheus -> grafana`
 
 ### Diagramme (complement visuel)
@@ -90,12 +92,15 @@ flowchart LR
   SIM[Simulateur IoT] --> MQTT[MQTT Broker]
   MQTT --> COL[Collector]
   COL --> TSDB[(TimescaleDB)]
+  COL --> REDIS[(Redis)]
   TSDB --> PRED[Predictor T+30]
   PRED --> TSDB
   PRED --> RER[Rerouter]
   TSDB --> RER
   RER --> TSDB
   API[API REST + WS] --> TSDB
+  API --> REDIS
+  REDIS --> API
   API --> DASH[Dashboard]
   COL --> PROM[Prometheus]
   PRED --> PROM
@@ -107,19 +112,20 @@ flowchart LR
 ## 3) Flux de donnees
 
 1. Le simulateur publie des mesures trafic sur des topics MQTT.
-2. `collector` consomme MQTT, valide les messages, ecrit en base.
-3. `predictor` lit des fenetres temporelles et produit des previsions `T+30`.
-4. `rerouter` genere des alternatives si congestion > seuil.
-5. `api` expose REST + WebSocket au dashboard.
+2. `collector` consomme MQTT, valide les messages, ecrit en base et publie sur Redis (`cityflow:live`).
+3. `predictor` lit des fenetres temporelles et produit des previsions `T+30` (a construire).
+4. `rerouter` genere des alternatives si congestion > seuil (a construire).
+5. `api` expose REST (avec cache Redis et pagination cursor) + WebSocket (via Redis pub/sub) au dashboard.
 6. Prometheus scrape les metriques, Grafana affiche les KPI.
 
 ## 4) Schema de donnees (TimescaleDB)
 
-Tables minimales:
+Tables:
 
-- `traffic_raw`: mesures capteurs
+- `traffic_raw`: mesures capteurs (hypertable TimescaleDB)
 - `predictions`: previsions congestion
 - `reroutes`: recommandations generees
+- `users`: comptes utilisateurs (auto-migree par GORM au demarrage de l'API)
 
 Exemple SQL minimal:
 
@@ -263,6 +269,26 @@ docker compose logs -f collector
 docker compose logs -f backend-api-auth
 ```
 
+Tester l'API:
+
+```bash
+# Register
+curl -X POST http://localhost:8081/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@cityflow.dev","password":"password123"}'
+
+# Login et stocker le token
+TOKEN=$(curl -s -X POST http://localhost:8081/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@cityflow.dev","password":"password123"}' | jq -r '.token')
+
+# Trafic live (authentifie)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/traffic/live?limit=5
+
+# WebSocket temps reel
+npx wscat -c "ws://localhost:8081/ws/live?token=$TOKEN"
+```
+
 Stop:
 
 ```bash
@@ -271,14 +297,14 @@ docker compose down
 
 URLs locales:
 
-- API auth: `http://localhost:8080/health`
+- API auth: `http://localhost:8081/health`
+- Collector metrics/health: `http://localhost:8080/metrics`, `http://localhost:8080/health`
 - Grafana: `http://localhost:3000` (admin/admin par defaut)
 - Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100`
-- Promtail (health): `http://localhost:9080/ready` (compose)
 - MQTT broker: `localhost:1883`
 - TimescaleDB/Postgres: `localhost:5432`
-- Collector metrics/health: `http://localhost:8080/metrics`, `http://localhost:8080/health`
+- Redis: `localhost:6379`
 
 ## 8) Deploiement K3s (minimum)
 
@@ -353,13 +379,49 @@ Le chart reference par defaut:
 Avant sync ArgoCD, builder et pousser ces images dans un registry accessible par le cluster,
 ou modifier `charts/cityflow/values.yaml` pour pointer vers tes images.
 
-## 9) API minimale (contrat conseille)
+## 9) API (implementee)
 
-- `GET /health`
-- `GET /api/traffic/live`
-- `GET /api/predictions?horizon=30`
-- `GET /api/reroutes/recommended`
-- `WS /ws/live`
+### Authentification (JWT)
+
+```
+POST /api/auth/register          # Inscription (email + password, min 8 chars)
+POST /api/auth/login             # Connexion -> retourne un token JWT
+POST /api/auth/logout            # Deconnexion (JWT requis)
+```
+
+Reponse login/register:
+```json
+{
+  "token": "eyJhbGci...",
+  "user": {"id": 1, "email": "...", "role": "operator", "created_at": "..."}
+}
+```
+
+### Endpoints donnees (JWT requis, cache Redis, pagination cursor)
+
+```
+GET /health                                    # Public, healthcheck
+GET /api/traffic/live?limit=50&road_id=...     # Trafic live (cache 5s)
+GET /api/predictions?horizon=30&limit=50       # Predictions (cache 30s)
+GET /api/reroutes/recommended?limit=50         # Reroutages (cache 30s)
+WS  /ws/live?token=<jwt>                       # WebSocket temps reel via Redis pub/sub
+```
+
+### Pagination cursor
+
+Tous les endpoints GET de donnees supportent:
+- `?limit=50` (defaut 50, max 200)
+- `?before=<RFC3339>` (curseur pour page suivante)
+- Reponse: `{"data": [...], "next_cursor": "...", "has_more": true}`
+
+### Codes HTTP
+
+- `200` succes (y compris resultats vides)
+- `201` creation (register)
+- `400` parametre invalide
+- `401` token manquant/invalide
+- `409` email deja enregistre
+- `500` erreur serveur
 
 ## 10) KPI de demo
 
@@ -385,6 +447,9 @@ ou modifier `charts/cityflow/values.yaml` pour pointer vers tes images.
 
 ## 13) Prochaines ameliorations
 
+- service `predictor` Go (congestion T+30, baseline heuristique)
+- service `rerouter` Go (regles de reroutage)
+- dashboard frontend (OpenStreetMap + D3.js)
 - modele ML avance (XGBoost/LSTM)
 - enrichissement meteo/evenements en production
 - optimisation reseau multi-objectifs (ETA + CO2)
