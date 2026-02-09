@@ -31,6 +31,22 @@ services:
       - cityflow
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: cityflow-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cityflow
+    restart: unless-stopped
+
   backend-api-auth:
     build:
       context: ./Backend_API_Auth
@@ -44,8 +60,17 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cityflow_dev_password}
       DB_NAME: ${POSTGRES_DB:-cityflow}
       DB_SSLMODE: disable
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      JWT_EXPIRY_HOURS: ${JWT_EXPIRY_HOURS:-24}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: ${REDIS_DB:-0}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
     depends_on:
       timescaledb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "8081:8080"
@@ -141,11 +166,14 @@ services:
       MQTT_URL: tcp://mosquitto:1883
       MQTT_TOPIC: cityflow/traffic/+
       METRICS_ADDR: :8080
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       timescaledb:
         condition: service_healthy
       mosquitto:
         condition: service_started
+      redis:
+        condition: service_healthy
     ports:
       - "8080:8080"
     networks:
@@ -162,3 +190,4 @@ volumes:
   loki_data:
   promtail_positions:
   grafana_data:
+  redis_data:

@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 )
 
 type TrafficPayload struct {
@@ -41,6 +42,8 @@ var (
 	})
 )
 
+var redisClient *redis.Client
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -49,6 +52,7 @@ func main() {
 	mqttURL := getEnv("MQTT_URL", "tcp://localhost:1883")
 	mqttTopic := getEnv("MQTT_TOPIC", "cityflow/traffic/+")
 	metricsAddr := getEnv("METRICS_ADDR", ":8080")
+	redisURL := getEnv("REDIS_URL", "")
 
 	dbPool, err := pgxpool.New(ctx, dbDSN)
 	if err != nil {
@@ -58,6 +62,21 @@ func main() {
 
 	if err := dbPool.Ping(ctx); err != nil {
 		log.Fatalf("db ping failed: %v", err)
+	}
+
+	if redisURL != "" {
+		opts, err := redis.ParseURL(redisURL)
+		if err != nil {
+			log.Printf("invalid REDIS_URL, skipping Redis: %v", err)
+		} else {
+			redisClient = redis.NewClient(opts)
+			if err := redisClient.Ping(ctx).Err(); err != nil {
+				log.Printf("redis ping failed, skipping Redis: %v", err)
+				redisClient = nil
+			} else {
+				log.Printf("redis connected: %s", redisURL)
+			}
+		}
 	}
 
 	go serveHTTP(metricsAddr)
@@ -96,6 +115,9 @@ func main() {
 	<-ctx.Done()
 	log.Printf("collector shutting down")
 	client.Disconnect(250)
+	if redisClient != nil {
+		redisClient.Close()
+	}
 }
 
 func serveHTTP(addr string) {
@@ -154,6 +176,10 @@ func processMessage(ctx context.Context, dbPool *pgxpool.Pool, payloadRaw []byte
 	}
 
 	msgsStored.Inc()
+
+	if redisClient != nil {
+		_ = redisClient.Publish(ctx, "cityflow:live", payloadRaw).Err()
+	}
 }
 
 func getEnv(key, fallback string) string {

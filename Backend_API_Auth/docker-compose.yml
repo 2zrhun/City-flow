@@ -11,6 +11,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   postgres:
@@ -31,5 +33,20 @@ services:
       retries: 8
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: cityflow-auth-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - auth_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   auth_postgres_data:
+  auth_redis_data:

@@ -9,6 +9,10 @@ import (
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
+	JWT      JWTConfig
+	Redis    RedisConfig
+	CORS     CORSConfig
+	WS       WSConfig
 }
 
 type ServerConfig struct {
@@ -22,6 +26,26 @@ type DatabaseConfig struct {
 	Password string
 	Name     string
 	SSLMode  string
+}
+
+type JWTConfig struct {
+	Secret      string
+	ExpiryHours int
+}
+
+type RedisConfig struct {
+	Host     string
+	Port     int
+	Password string
+	DB       int
+}
+
+type CORSConfig struct {
+	AllowedOrigins string
+}
+
+type WSConfig struct {
+	PollIntervalMS int
 }
 
 func (d DatabaseConfig) GetDSN() string {
@@ -42,6 +66,26 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("invalid DB_PORT: %w", err)
 	}
 
+	jwtExpiryHours, err := getIntEnv("JWT_EXPIRY_HOURS", 24)
+	if err != nil {
+		return nil, fmt.Errorf("invalid JWT_EXPIRY_HOURS: %w", err)
+	}
+
+	redisPort, err := getIntEnv("REDIS_PORT", 6379)
+	if err != nil {
+		return nil, fmt.Errorf("invalid REDIS_PORT: %w", err)
+	}
+
+	redisDB, err := getIntEnv("REDIS_DB", 0)
+	if err != nil {
+		return nil, fmt.Errorf("invalid REDIS_DB: %w", err)
+	}
+
+	wsPollInterval, err := getIntEnv("WS_POLL_INTERVAL_MS", 3000)
+	if err != nil {
+		return nil, fmt.Errorf("invalid WS_POLL_INTERVAL_MS: %w", err)
+	}
+
 	cfg := &Config{
 		Server: ServerConfig{
 			Port: serverPort,
@@ -53,6 +97,22 @@ func LoadConfig() (*Config, error) {
 			Password: getEnv("DB_PASSWORD", "cityflow_dev_password"),
 			Name:     getEnv("DB_NAME", "cityflow"),
 			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+		},
+		JWT: JWTConfig{
+			Secret:      getEnv("JWT_SECRET", "dev-secret-change-me"),
+			ExpiryHours: jwtExpiryHours,
+		},
+		Redis: RedisConfig{
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     redisPort,
+			Password: getEnv("REDIS_PASSWORD", ""),
+			DB:       redisDB,
+		},
+		CORS: CORSConfig{
+			AllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "*"),
+		},
+		WS: WSConfig{
+			PollIntervalMS: wsPollInterval,
 		},
 	}
 
