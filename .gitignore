@@ -1,0 +1,17 @@
+.env
+
+# Node
+node_modules/
+
+# Go
+bin/
+*.exe
+*.test
+*.out
+
+# IDE/OS
+.DS_Store
+Thumbs.db
+
+# Local volumes/export files
+*.log

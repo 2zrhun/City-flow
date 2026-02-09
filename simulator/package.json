@@ -1,0 +1,13 @@
+{
+  "name": "cityflow-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IoT traffic simulator for CityFlow",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.4"
+  }
+}

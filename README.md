@@ -239,39 +239,40 @@ Done attendu:
 Prerequis:
 
 - Docker Desktop + Compose
-- Go `>= 1.22`
-- Node.js `>= 20`
 - `kubectl` (pour K3s)
 
 Commandes types:
 
 ```bash
-# 1) Infra locale
-docker compose up -d mosquitto timescaledb prometheus grafana
+# 0) Variables d environnement (optionnel mais recommande)
+cp .env.example .env
 
-# 2) Simulateur
-cd simulator
-npm install
-npm run dev
+# 1) Build + start (tout dockerise)
+docker compose up -d --build
 
-# 3) Collector
-cd ../services/collector
-go run .
+# 2) Verifier les conteneurs
+docker compose ps
 
-# 4) Predictor
-cd ../predictor
-go run .
+# 3) Suivre les logs du simulateur
+docker compose logs -f simulator
 
-# 5) Rerouter
-cd ../rerouter
-go run .
-
-# 6) API
-cd ../api
-go run .
+# 4) Suivre les logs du collector
+docker compose logs -f collector
 ```
 
-Note: adapte les chemins a la structure reelle du repo.
+Stop:
+
+```bash
+docker compose down
+```
+
+URLs locales:
+
+- Grafana: `http://localhost:3000` (admin/admin par defaut)
+- Prometheus: `http://localhost:9090`
+- MQTT broker: `localhost:1883`
+- TimescaleDB/Postgres: `localhost:5432`
+- Collector metrics/health: `http://localhost:8080/metrics`, `http://localhost:8080/health`
 
 ## 8) Deploiement K3s (minimum)
 
