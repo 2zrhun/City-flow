@@ -14,3 +14,6 @@ simulator:
 
 backendApiAuth:
   image: ghcr.io/your-org/cityflow-backend-api-auth:latest
+
+loki:
+  image: grafana/loki:2.9.8

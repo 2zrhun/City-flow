@@ -69,6 +69,20 @@ services:
       - cityflow
     restart: unless-stopped
 
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: cityflow-loki
+    command:
+      - -config.file=/etc/loki/config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./ops/loki/config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    networks:
+      - cityflow
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
     container_name: cityflow-grafana
@@ -82,6 +96,7 @@ services:
       - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
+      - loki
     networks:
       - cityflow
     restart: unless-stopped
@@ -129,4 +144,5 @@ networks:
 volumes:
   tsdb_data:
   prometheus_data:
+  loki_data:
   grafana_data:

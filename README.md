@@ -274,6 +274,7 @@ URLs locales:
 - API auth: `http://localhost:8080/health`
 - Grafana: `http://localhost:3000` (admin/admin par defaut)
 - Prometheus: `http://localhost:9090`
+- Loki: `http://localhost:3100`
 - MQTT broker: `localhost:1883`
 - TimescaleDB/Postgres: `localhost:5432`
 - Collector metrics/health: `http://localhost:8080/metrics`, `http://localhost:8080/health`
