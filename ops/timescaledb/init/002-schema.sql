@@ -33,3 +33,6 @@ CREATE TABLE IF NOT EXISTS reroutes (
   eta_gain_min       DOUBLE PRECISION,
   PRIMARY KEY (ts, route_id, alt_route_id)
 );
+
+SELECT create_hypertable('reroutes', 'ts', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS idx_reroutes_route_ts ON reroutes (route_id, ts DESC);

@@ -63,6 +63,17 @@ predictor:
     type: ClusterIP
     port: 8080
 
+rerouter:
+  enabled: true
+  image: cityflow/rerouter:latest
+  rerouteIntervalSec: 60
+  congestionThreshold: "0.5"
+  metricsAddr: ":8080"
+  redisUrl: "redis://redis:6379/0"
+  service:
+    type: ClusterIP
+    port: 8080
+
 backendApiAuth:
   enabled: true
   image: cityflow/backend-api-auth:latest

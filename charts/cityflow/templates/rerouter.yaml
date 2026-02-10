@@ -1,0 +1,57 @@
+{{- if .Values.rerouter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rerouter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rerouter
+  template:
+    metadata:
+      labels:
+        app: rerouter
+    spec:
+      containers:
+        - name: rerouter
+          image: {{ .Values.rerouter.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_DSN
+              value: postgres://{{ .Values.secrets.postgresUser }}:{{ .Values.secrets.postgresPassword }}@timescaledb:5432/{{ .Values.secrets.postgresDb }}?sslmode=disable
+            - name: REDIS_URL
+              value: {{ .Values.rerouter.redisUrl | quote }}
+            - name: METRICS_ADDR
+              value: {{ .Values.rerouter.metricsAddr | quote }}
+            - name: REROUTE_INTERVAL_SEC
+              value: {{ .Values.rerouter.rerouteIntervalSec | quote }}
+            - name: CONGESTION_THRESHOLD
+              value: {{ .Values.rerouter.congestionThreshold | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rerouter
+spec:
+  type: {{ .Values.rerouter.service.type }}
+  selector:
+    app: rerouter
+  ports:
+    - port: {{ .Values.rerouter.service.port }}
+      targetPort: 8080
+{{- end }}

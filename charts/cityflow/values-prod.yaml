@@ -20,6 +20,9 @@ collector:
 predictor:
   image: ghcr.io/2zrhun/cityflow-predictor:latest
 
+rerouter:
+  image: ghcr.io/2zrhun/cityflow-rerouter:latest
+
 simulator:
   image: ghcr.io/2zrhun/cityflow-simulator:latest
 
