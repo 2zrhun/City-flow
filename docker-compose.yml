@@ -156,6 +156,30 @@ services:
       - cityflow
     restart: unless-stopped
 
+  predictor:
+    build:
+      context: ./services/predictor
+      dockerfile: Dockerfile
+    container_name: cityflow-predictor
+    environment:
+      DB_DSN: postgres://${POSTGRES_USER:-cityflow}:${POSTGRES_PASSWORD:-cityflow_dev_password}@timescaledb:5432/${POSTGRES_DB:-cityflow}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      METRICS_ADDR: :8080
+      PREDICTION_INTERVAL_SEC: ${PREDICTOR_INTERVAL_SEC:-60}
+      LOOKBACK_WINDOW_MIN: ${PREDICTOR_LOOKBACK_MIN:-30}
+      HORIZON_MIN: ${PREDICTOR_HORIZON_MIN:-30}
+      MODEL_VERSION: baseline-v1
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8083:8080"
+    networks:
+      - cityflow
+    restart: unless-stopped
+
   collector:
     build:
       context: ./services/collector

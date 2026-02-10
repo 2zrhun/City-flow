@@ -1,0 +1,61 @@
+{{- if .Values.predictor.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: predictor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: predictor
+  template:
+    metadata:
+      labels:
+        app: predictor
+    spec:
+      containers:
+        - name: predictor
+          image: {{ .Values.predictor.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_DSN
+              value: postgres://{{ .Values.secrets.postgresUser }}:{{ .Values.secrets.postgresPassword }}@timescaledb:5432/{{ .Values.secrets.postgresDb }}?sslmode=disable
+            - name: REDIS_URL
+              value: {{ .Values.predictor.redisUrl | quote }}
+            - name: METRICS_ADDR
+              value: {{ .Values.predictor.metricsAddr | quote }}
+            - name: PREDICTION_INTERVAL_SEC
+              value: {{ .Values.predictor.predictionIntervalSec | quote }}
+            - name: LOOKBACK_WINDOW_MIN
+              value: {{ .Values.predictor.lookbackWindowMin | quote }}
+            - name: HORIZON_MIN
+              value: {{ .Values.predictor.horizonMin | quote }}
+            - name: MODEL_VERSION
+              value: {{ .Values.predictor.modelVersion | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: predictor
+spec:
+  type: {{ .Values.predictor.service.type }}
+  selector:
+    app: predictor
+  ports:
+    - port: {{ .Values.predictor.service.port }}
+      targetPort: 8080
+{{- end }}

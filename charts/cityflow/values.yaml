@@ -50,6 +50,19 @@ collector:
     type: ClusterIP
     port: 8080
 
+predictor:
+  enabled: true
+  image: cityflow/predictor:latest
+  predictionIntervalSec: 60
+  lookbackWindowMin: 30
+  horizonMin: 30
+  modelVersion: baseline-v1
+  metricsAddr: ":8080"
+  redisUrl: "redis://redis:6379/0"
+  service:
+    type: ClusterIP
+    port: 8080
+
 backendApiAuth:
   enabled: true
   image: cityflow/backend-api-auth:latest

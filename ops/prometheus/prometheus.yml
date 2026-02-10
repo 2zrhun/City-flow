@@ -12,3 +12,8 @@ scrape_configs:
     static_configs:
       - targets:
           - collector:8080
+
+  - job_name: cityflow-predictor
+    static_configs:
+      - targets:
+          - predictor:8080

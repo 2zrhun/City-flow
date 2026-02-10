@@ -306,78 +306,121 @@ URLs locales:
 - TimescaleDB/Postgres: `localhost:5432`
 - Redis: `localhost:6379`
 
-## 8) Deploiement K3s (minimum)
+## 8) Deploiement Kubernetes (Docker Desktop + ArgoCD + Helm)
 
-Note: cette section en manifests bruts est conservee pour reference. Pour un setup propre,
-utilise la section `8-bis` (ArgoCD + Helm).
+### Namespaces du cluster
 
-1. Installer K3s local (ou VM Linux locale)
-2. Construire/pusher images
-3. Appliquer manifests:
+| Namespace | Contenu | Role |
+|-----------|---------|------|
+| `cityflow` | 10 pods applicatifs (voir detail ci-dessous) | Stack CityFlow complete, deployee via Helm chart |
+| `argocd` | 6 deployments ArgoCD (server, repo-server, app-controller, dex, redis, notifications) | GitOps — synchronise automatiquement le Helm chart depuis Git |
+| `kube-system` | CoreDNS, kube-proxy, metrics-server, local-path-provisioner | Composants internes Kubernetes |
+| `kube-node-lease` | Leases des noeuds | Heartbeat des noeuds (interne K8s) |
+| `kube-public` | ConfigMaps publiques | Ressources accessibles a tous (interne K8s) |
+| `local-path-storage` | Provisioner de volumes | Gestion automatique des PersistentVolumeClaims |
+| `default` | Vide | Namespace par defaut (non utilise) |
 
-```bash
-kubectl apply -f k8s/namespaces
-kubectl apply -f k8s/data
-kubectl apply -f k8s/messaging
-kubectl apply -f k8s/services
-kubectl apply -f k8s/observability
-```
+### Namespace `cityflow` (detail)
 
-4. Verifier:
+| Pod | Type | Port | Role |
+|-----|------|------|------|
+| `mosquitto` | Deployment | 1883 | Broker MQTT — recoit les messages des capteurs IoT |
+| `timescaledb` | Deployment | 5432 | Base de donnees time-series (PostgreSQL + TimescaleDB) |
+| `redis` | Deployment | 6379 | Cache + pub/sub pour WebSocket temps reel |
+| `collector` | Deployment | 8080 | Consomme MQTT, ecrit en DB, publie sur Redis |
+| `simulator` | Deployment | — | Emule 10 capteurs IoT, publie sur MQTT toutes les 2s |
+| `backend-api-auth` | Deployment | 8080 | API REST + JWT + WebSocket + cache Redis |
+| `prometheus` | Deployment | 9090 | Collecte des metriques (`/metrics`) |
+| `grafana` | Deployment | 3000 | Dashboards (metriques + logs) |
+| `loki` | Deployment | 3100 | Agregation de logs |
+| `promtail` | DaemonSet | — | Scrape les logs des pods et les envoie a Loki |
 
-```bash
-kubectl get pods -A
-kubectl get svc -A
-```
+### Namespace `argocd` (detail)
 
-## 8-bis) Workflow recommande: ArgoCD + Helm (cluster-first)
+| Deployment | Role |
+|------------|------|
+| `argocd-server` | UI web + API ArgoCD |
+| `argocd-repo-server` | Clone les repos Git et genere les manifests Helm |
+| `argocd-application-controller` | Compare l'etat desire (Git) vs l'etat reel (cluster) |
+| `argocd-dex-server` | Authentification SSO (optionnel) |
+| `argocd-redis` | Cache interne ArgoCD |
+| `argocd-notifications-controller` | Notifications (Slack, webhooks, etc.) |
 
-Objectif: piloter les deployments via GitOps des le depart.
+### Volumes persistants (PVC)
 
-### Arborescence ajoutee
+| PVC | Taille | Monte sur |
+|-----|--------|-----------|
+| `timescaledb-pvc` | 10Gi | `/var/lib/postgresql/data` |
+| `redis-pvc` | 1Gi | `/data` |
+| `prometheus-pvc` | 5Gi | `/prometheus` |
+| `grafana-pvc` | 5Gi | `/var/lib/grafana` |
+| `loki-pvc` | 5Gi | `/loki` |
 
-- `charts/cityflow`: chart Helm de la stack MVP
+### Arborescence K8s/GitOps
+
+- `charts/cityflow/`: chart Helm de la stack MVP (source de verite)
 - `argocd/project-cityflow.yaml`: AppProject ArgoCD
-- `argocd/application-cityflow.yaml`: Application ArgoCD pointant sur le chart
-- `scripts/bootstrap-k3s.sh`: install K3s (single node)
-- `scripts/bootstrap-argocd.sh`: install ArgoCD + apply des manifests GitOps
+- `argocd/application-cityflow.yaml`: Application ArgoCD pointant sur `charts/cityflow/`
+- `scripts/bootstrap-argocd.sh`: installe ArgoCD + applique les manifests GitOps
+- `k8s/`: manifests bruts (reference, non utilises avec ArgoCD)
 
-### Etapes
+### Setup du cluster
 
-1. Installer K3s (Linux/VM Linux):
-
-```bash
-./scripts/bootstrap-k3s.sh
-```
-
-2. Installer ArgoCD et enregistrer l'app CityFlow:
+Prerequis: Docker Desktop avec Kubernetes active.
 
 ```bash
+# 1) Verifier le contexte
+kubectl config use-context docker-desktop
+kubectl get nodes
+
+# 2) Installer Helm
+brew install helm
+
+# 3) Build et push des images vers GHCR
+echo $CR_PAT | docker login ghcr.io -u 2zrhun --password-stdin
+
+docker build -t ghcr.io/2zrhun/cityflow-collector:latest -f services/collector/Dockerfile services/collector/
+docker push ghcr.io/2zrhun/cityflow-collector:latest
+
+docker build -t ghcr.io/2zrhun/cityflow-backend-api-auth:latest -f Backend_API_Auth/Dockerfile Backend_API_Auth/
+docker push ghcr.io/2zrhun/cityflow-backend-api-auth:latest
+
+docker build -t ghcr.io/2zrhun/cityflow-simulator:latest -f simulator/Dockerfile simulator/
+docker push ghcr.io/2zrhun/cityflow-simulator:latest
+
+# 4) Installer ArgoCD et deployer
 ./scripts/bootstrap-argocd.sh
 ```
 
-3. Ouvrir ArgoCD:
+### Acces aux services (port-forward)
 
 ```bash
-kubectl -n argocd port-forward svc/argocd-server 8081:443
+# API
+kubectl -n cityflow port-forward svc/backend-api-auth 8081:8080
+
+# ArgoCD UI (https://localhost:8443, admin + mot de passe ci-dessous)
+kubectl -n argocd port-forward svc/argocd-server 8443:443
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+
+# Grafana (http://localhost:3000, admin/admin)
+kubectl -n cityflow port-forward svc/grafana 3000:3000
+
+# Prometheus (http://localhost:9090)
+kubectl -n cityflow port-forward svc/prometheus 9090:9090
 ```
 
-4. Adapter le repo Git cible:
-- modifier `repoURL` dans `argocd/application-cityflow.yaml`
-- verifier/adapter `charts/cityflow/values-prod.yaml`
-- commit/push
-- ArgoCD synchronise automatiquement
+### GitOps: deploiement automatique
 
-### Build/push images (important)
+ArgoCD surveille la branche `main` du repo `https://github.com/2zrhun/City-flow.git`,
+dossier `charts/cityflow/`. Tout push sur ce dossier declenche un sync automatique:
 
-Le chart reference par defaut:
-- `cityflow/collector:latest`
-- `cityflow/simulator:latest`
-- `cityflow/backend-api-auth:latest`
+- `syncPolicy.automated.prune: true` — supprime les ressources retirees du chart
+- `syncPolicy.automated.selfHeal: true` — re-synchronise si un changement manuel est detecte
 
-Avant sync ArgoCD, builder et pousser ces images dans un registry accessible par le cluster,
-ou modifier `charts/cityflow/values.yaml` pour pointer vers tes images.
+Images GHCR (configurees dans `values-prod.yaml`):
+- `ghcr.io/2zrhun/cityflow-collector:latest`
+- `ghcr.io/2zrhun/cityflow-backend-api-auth:latest`
+- `ghcr.io/2zrhun/cityflow-simulator:latest`
 
 ## 9) API (implementee)
 

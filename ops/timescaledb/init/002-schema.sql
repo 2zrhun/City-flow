@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS predictions (
   PRIMARY KEY (ts, road_id, horizon_min)
 );
 
+SELECT create_hypertable('predictions', 'ts', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS idx_predictions_road_ts ON predictions (road_id, ts DESC);
+
 CREATE TABLE IF NOT EXISTS reroutes (
   ts                 TIMESTAMPTZ NOT NULL,
   route_id           TEXT        NOT NULL,

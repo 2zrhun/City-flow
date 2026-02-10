@@ -17,6 +17,9 @@ collector:
   image: ghcr.io/2zrhun/cityflow-collector:latest
   redisUrl: "redis://redis:6379/0"
 
+predictor:
+  image: ghcr.io/2zrhun/cityflow-predictor:latest
+
 simulator:
   image: ghcr.io/2zrhun/cityflow-simulator:latest
 
