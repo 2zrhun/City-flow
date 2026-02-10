@@ -24,7 +24,7 @@ Perimetre MVP prioritaire:
 
 Fonctionnalites optionnelles (si temps restant):
 
-- ArgoCD complet
+- ~~ArgoCD complet~~ **fait** (GitOps avec auto-sync)
 - enrichissement meteo/evenements
 - ~~Redis cache live~~ **fait**
 - Istio service mesh
@@ -70,7 +70,8 @@ Architecture en 5 couches:
 | simulator | MQTT | collector | Ingestion des mesures trafic |
 | collector | SQL insert | TimescaleDB.traffic_raw | Stockage time-series |
 | collector | Redis PUBLISH | Redis `cityflow:live` | Diffusion temps reel |
-| predictor | SQL read/write | TimescaleDB.predictions | Prevision congestion T+30 |
+| predictor | SQL read/write | TimescaleDB.predictions | Prevision congestion T+30 (score 0-1, toutes les 60s) |
+| predictor | Redis PUBLISH | Redis `cityflow:predictions` | Diffusion temps reel des predictions |
 | rerouter | SQL read/write | TimescaleDB.reroutes | Recommandations alternatives |
 | api | SQL + Redis cache | DB + Redis | Agregation des donnees (cache 5-30s) |
 | api | WebSocket | Redis SUBSCRIBE | Flux live via pub/sub |
@@ -80,7 +81,7 @@ Architecture en 5 couches:
 ### Flux principal (ordre d execution)
 
 1. `simulator -> mqtt-broker -> collector -> traffic_raw + Redis PUBLISH`
-2. `predictor -> predictions` (a construire)
+2. `predictor -> predictions + Redis PUBLISH` (toutes les 60s, score de congestion par route)
 3. `rerouter -> reroutes` (a construire)
 4. `api (REST + cache Redis + WS via Redis sub) -> dashboard`
 5. `prometheus -> grafana`
@@ -113,7 +114,7 @@ flowchart LR
 
 1. Le simulateur publie des mesures trafic sur des topics MQTT.
 2. `collector` consomme MQTT, valide les messages, ecrit en base et publie sur Redis (`cityflow:live`).
-3. `predictor` lit des fenetres temporelles et produit des previsions `T+30` (a construire).
+3. `predictor` lit les 30 dernieres minutes de `traffic_raw` par route, calcule un score de congestion (0-1) et ecrit dans `predictions`. Publie sur Redis (`cityflow:predictions`).
 4. `rerouter` genere des alternatives si congestion > seuil (a construire).
 5. `api` expose REST (avec cache Redis et pagination cursor) + WebSocket (via Redis pub/sub) au dashboard.
 6. Prometheus scrape les metriques, Grafana affiche les KPI.
@@ -123,7 +124,7 @@ flowchart LR
 Tables:
 
 - `traffic_raw`: mesures capteurs (hypertable TimescaleDB)
-- `predictions`: previsions congestion
+- `predictions`: previsions congestion (hypertable TimescaleDB, index sur `road_id, ts DESC`)
 - `reroutes`: recommandations generees
 - `users`: comptes utilisateurs (auto-migree par GORM au demarrage de l'API)
 
@@ -184,29 +185,30 @@ Payload JSON exemple:
 
 ## 6) Plan d execution en 5 jours
 
-### Jour 1 - Ingestion et stockage
+### Jour 1 - Ingestion et stockage **FAIT**
 
-- Demarrer stack locale (`MQTT + TimescaleDB + Prometheus + Grafana`)
-- Construire simulateur IoT Node.js
-- Construire `collector` Go
-- Verifier inserts dans `traffic_raw`
-
-Done attendu:
-
-- messages MQTT recus
-- donnees persistees
-- premier dashboard Grafana en ligne
-
-### Jour 2 - Prediction T+30
-
-- Construire `predictor` Go (cron interne 1-5 min)
-- Implementer baseline simple (moyenne mobile + tendance)
-- Ecrire dans `predictions`
+- ~~Demarrer stack locale~~ **fait** (`MQTT + TimescaleDB + Prometheus + Grafana + Loki`)
+- ~~Construire simulateur IoT Node.js~~ **fait** (10 capteurs, 5 routes, publication toutes les 2s)
+- ~~Construire `collector` Go~~ **fait** (MQTT -> TimescaleDB + Redis pub/sub)
+- ~~Verifier inserts dans `traffic_raw`~~ **fait**
 
 Done attendu:
 
-- previsions generees automatiquement
-- metriques predictor dans Prometheus
+- messages MQTT recus **OK**
+- donnees persistees **OK**
+- premier dashboard Grafana en ligne **OK**
+
+### Jour 2 - Prediction T+30 **FAIT**
+
+- ~~Construire `predictor` Go (cron interne 1-5 min)~~ **fait** — boucle toutes les 60s
+- ~~Implementer baseline simple (moyenne mobile + tendance)~~ **fait** — score pondere: 40% vitesse + 40% occupation + 20% debit
+- ~~Ecrire dans `predictions`~~ **fait** — upsert avec ON CONFLICT
+- Publication temps reel sur Redis `cityflow:predictions` **fait**
+
+Done attendu:
+
+- previsions generees automatiquement **OK**
+- metriques predictor dans Prometheus **OK**
 
 ### Jour 3 - Reroutage + API
 
@@ -299,6 +301,7 @@ URLs locales:
 
 - API auth: `http://localhost:8081/health`
 - Collector metrics/health: `http://localhost:8080/metrics`, `http://localhost:8080/health`
+- Predictor metrics/health: `http://localhost:8083/metrics`, `http://localhost:8083/health`
 - Grafana: `http://localhost:3000` (admin/admin par defaut)
 - Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100`
@@ -312,7 +315,7 @@ URLs locales:
 
 | Namespace | Contenu | Role |
 |-----------|---------|------|
-| `cityflow` | 10 pods applicatifs (voir detail ci-dessous) | Stack CityFlow complete, deployee via Helm chart |
+| `cityflow` | 11 pods applicatifs (voir detail ci-dessous) | Stack CityFlow complete, deployee via Helm chart |
 | `argocd` | 6 deployments ArgoCD (server, repo-server, app-controller, dex, redis, notifications) | GitOps — synchronise automatiquement le Helm chart depuis Git |
 | `kube-system` | CoreDNS, kube-proxy, metrics-server, local-path-provisioner | Composants internes Kubernetes |
 | `kube-node-lease` | Leases des noeuds | Heartbeat des noeuds (interne K8s) |
@@ -328,6 +331,7 @@ URLs locales:
 | `timescaledb` | Deployment | 5432 | Base de donnees time-series (PostgreSQL + TimescaleDB) |
 | `redis` | Deployment | 6379 | Cache + pub/sub pour WebSocket temps reel |
 | `collector` | Deployment | 8080 | Consomme MQTT, ecrit en DB, publie sur Redis |
+| `predictor` | Deployment | 8080 | Calcule la congestion T+30 toutes les 60s, publie sur Redis |
 | `simulator` | Deployment | — | Emule 10 capteurs IoT, publie sur MQTT toutes les 2s |
 | `backend-api-auth` | Deployment | 8080 | API REST + JWT + WebSocket + cache Redis |
 | `prometheus` | Deployment | 9090 | Collecte des metriques (`/metrics`) |
@@ -379,13 +383,16 @@ brew install helm
 # 3) Build et push des images vers GHCR
 echo $CR_PAT | docker login ghcr.io -u 2zrhun --password-stdin
 
-docker build -t ghcr.io/2zrhun/cityflow-collector:latest -f services/collector/Dockerfile services/collector/
+docker build --platform linux/arm64 -t ghcr.io/2zrhun/cityflow-collector:latest -f services/collector/Dockerfile services/collector/
 docker push ghcr.io/2zrhun/cityflow-collector:latest
 
-docker build -t ghcr.io/2zrhun/cityflow-backend-api-auth:latest -f Backend_API_Auth/Dockerfile Backend_API_Auth/
+docker build --platform linux/arm64 -t ghcr.io/2zrhun/cityflow-predictor:latest -f services/predictor/Dockerfile services/predictor/
+docker push ghcr.io/2zrhun/cityflow-predictor:latest
+
+docker build --platform linux/arm64 -t ghcr.io/2zrhun/cityflow-backend-api-auth:latest -f Backend_API_Auth/Dockerfile Backend_API_Auth/
 docker push ghcr.io/2zrhun/cityflow-backend-api-auth:latest
 
-docker build -t ghcr.io/2zrhun/cityflow-simulator:latest -f simulator/Dockerfile simulator/
+docker build --platform linux/arm64 -t ghcr.io/2zrhun/cityflow-simulator:latest -f simulator/Dockerfile simulator/
 docker push ghcr.io/2zrhun/cityflow-simulator:latest
 
 # 4) Installer ArgoCD et deployer
@@ -397,6 +404,9 @@ docker push ghcr.io/2zrhun/cityflow-simulator:latest
 ```bash
 # API
 kubectl -n cityflow port-forward svc/backend-api-auth 8081:8080
+
+# Predictor
+kubectl -n cityflow port-forward svc/predictor 8083:8080
 
 # ArgoCD UI (https://localhost:8443, admin + mot de passe ci-dessous)
 kubectl -n argocd port-forward svc/argocd-server 8443:443
@@ -419,6 +429,7 @@ dossier `charts/cityflow/`. Tout push sur ce dossier declenche un sync automatiq
 
 Images GHCR (configurees dans `values-prod.yaml`):
 - `ghcr.io/2zrhun/cityflow-collector:latest`
+- `ghcr.io/2zrhun/cityflow-predictor:latest`
 - `ghcr.io/2zrhun/cityflow-backend-api-auth:latest`
 - `ghcr.io/2zrhun/cityflow-simulator:latest`
 
@@ -490,10 +501,10 @@ Tous les endpoints GET de donnees supportent:
 
 ## 13) Prochaines ameliorations
 
-- service `predictor` Go (congestion T+30, baseline heuristique)
 - service `rerouter` Go (regles de reroutage)
 - dashboard frontend (OpenStreetMap + D3.js)
-- modele ML avance (XGBoost/LSTM)
+- CI/CD pipeline (GitHub Actions: build, test, push images)
+- modele ML avance (XGBoost/LSTM) pour remplacer le baseline heuristique
 - enrichissement meteo/evenements en production
 - optimisation reseau multi-objectifs (ETA + CO2)
-- GitOps complet + tests de charge
+- tests de charge
