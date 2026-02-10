@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/2zrhun/cityflow
@@ -35,6 +39,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
+          cache-dependency-path: ${{ matrix.context }}/go.sum
 
       - name: Download dependencies
         working-directory: ${{ matrix.context }}
@@ -67,10 +72,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [go-build, node-build]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      packages: write
     strategy:
+      fail-fast: false
       matrix:
         include:
           - service: collector
