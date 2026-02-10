@@ -72,7 +72,9 @@ Architecture en 5 couches:
 | collector | Redis PUBLISH | Redis `cityflow:live` | Diffusion temps reel |
 | predictor | SQL read/write | TimescaleDB.predictions | Prevision congestion T+30 (score 0-1, toutes les 60s) |
 | predictor | Redis PUBLISH | Redis `cityflow:predictions` | Diffusion temps reel des predictions |
-| rerouter | SQL read/write | TimescaleDB.reroutes | Recommandations alternatives |
+| rerouter | SQL read (predictions) | TimescaleDB.predictions | Lecture des scores de congestion |
+| rerouter | SQL write | TimescaleDB.reroutes | Recommandations alternatives (si congestion > 0.5) |
+| rerouter | Redis PUBLISH | Redis `cityflow:reroutes` | Diffusion temps reel des recommandations |
 | api | SQL + Redis cache | DB + Redis | Agregation des donnees (cache 5-30s) |
 | api | WebSocket | Redis SUBSCRIBE | Flux live via pub/sub |
 | dashboard | REST + WebSocket | api | Affichage live operateur |
@@ -82,7 +84,7 @@ Architecture en 5 couches:
 
 1. `simulator -> mqtt-broker -> collector -> traffic_raw + Redis PUBLISH`
 2. `predictor -> predictions + Redis PUBLISH` (toutes les 60s, score de congestion par route)
-3. `rerouter -> reroutes` (a construire)
+3. `rerouter -> reroutes + Redis PUBLISH` (toutes les 60s, si congestion > 0.5 et alternative meilleure)
 4. `api (REST + cache Redis + WS via Redis sub) -> dashboard`
 5. `prometheus -> grafana`
 
@@ -115,7 +117,7 @@ flowchart LR
 1. Le simulateur publie des mesures trafic sur des topics MQTT.
 2. `collector` consomme MQTT, valide les messages, ecrit en base et publie sur Redis (`cityflow:live`).
 3. `predictor` lit les 30 dernieres minutes de `traffic_raw` par route, calcule un score de congestion (0-1) et ecrit dans `predictions`. Publie sur Redis (`cityflow:predictions`).
-4. `rerouter` genere des alternatives si congestion > seuil (a construire).
+4. `rerouter` lit les predictions, detecte les routes congestionnees (score > 0.5), propose des alternatives via carte d'adjacence statique (2 alternatives par route). Publie sur Redis (`cityflow:reroutes`).
 5. `api` expose REST (avec cache Redis et pagination cursor) + WebSocket (via Redis pub/sub) au dashboard.
 6. Prometheus scrape les metriques, Grafana affiche les KPI.
 
@@ -125,7 +127,7 @@ Tables:
 
 - `traffic_raw`: mesures capteurs (hypertable TimescaleDB)
 - `predictions`: previsions congestion (hypertable TimescaleDB, index sur `road_id, ts DESC`)
-- `reroutes`: recommandations generees
+- `reroutes`: recommandations generees (hypertable TimescaleDB, index sur `route_id, ts DESC`)
 - `users`: comptes utilisateurs (auto-migree par GORM au demarrage de l'API)
 
 Exemple SQL minimal:
@@ -210,11 +212,11 @@ Done attendu:
 - previsions generees automatiquement **OK**
 - metriques predictor dans Prometheus **OK**
 
-### Jour 3 - Reroutage + API
+### Jour 3 - Reroutage + API **FAIT**
 
-- Construire `rerouter` Go (regles heuristiques)
-- Ecrire dans `reroutes`
-- Construire API/BFF (`REST + WebSocket`)
+- ~~Construire `rerouter` Go (regles heuristiques)~~ **fait** — lit predictions, seuil 0.5, carte d'adjacence statique
+- ~~Ecrire dans `reroutes`~~ **fait** — upsert avec ON CONFLICT, publication Redis `cityflow:reroutes`
+- ~~Construire API/BFF (`REST + WebSocket`)~~ **fait** — JWT, cache Redis, pagination cursor, WebSocket
 
 Done attendu:
 
@@ -302,6 +304,7 @@ URLs locales:
 - API auth: `http://localhost:8081/health`
 - Collector metrics/health: `http://localhost:8080/metrics`, `http://localhost:8080/health`
 - Predictor metrics/health: `http://localhost:8083/metrics`, `http://localhost:8083/health`
+- Rerouter metrics/health: `http://localhost:8084/metrics`, `http://localhost:8084/health`
 - Grafana: `http://localhost:3000` (admin/admin par defaut)
 - Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100`
@@ -315,7 +318,7 @@ URLs locales:
 
 | Namespace | Contenu | Role |
 |-----------|---------|------|
-| `cityflow` | 11 pods applicatifs (voir detail ci-dessous) | Stack CityFlow complete, deployee via Helm chart |
+| `cityflow` | 12 pods applicatifs (voir detail ci-dessous) | Stack CityFlow complete, deployee via Helm chart |
 | `argocd` | 6 deployments ArgoCD (server, repo-server, app-controller, dex, redis, notifications) | GitOps — synchronise automatiquement le Helm chart depuis Git |
 | `kube-system` | CoreDNS, kube-proxy, metrics-server, local-path-provisioner | Composants internes Kubernetes |
 | `kube-node-lease` | Leases des noeuds | Heartbeat des noeuds (interne K8s) |
@@ -332,6 +335,7 @@ URLs locales:
 | `redis` | Deployment | 6379 | Cache + pub/sub pour WebSocket temps reel |
 | `collector` | Deployment | 8080 | Consomme MQTT, ecrit en DB, publie sur Redis |
 | `predictor` | Deployment | 8080 | Calcule la congestion T+30 toutes les 60s, publie sur Redis |
+| `rerouter` | Deployment | 8080 | Recommande des reroutages si congestion > 0.5, publie sur Redis |
 | `simulator` | Deployment | — | Emule 10 capteurs IoT, publie sur MQTT toutes les 2s |
 | `backend-api-auth` | Deployment | 8080 | API REST + JWT + WebSocket + cache Redis |
 | `prometheus` | Deployment | 9090 | Collecte des metriques (`/metrics`) |
@@ -389,6 +393,9 @@ docker push ghcr.io/2zrhun/cityflow-collector:latest
 docker build --platform linux/arm64 -t ghcr.io/2zrhun/cityflow-predictor:latest -f services/predictor/Dockerfile services/predictor/
 docker push ghcr.io/2zrhun/cityflow-predictor:latest
 
+docker build --platform linux/arm64 -t ghcr.io/2zrhun/cityflow-rerouter:latest -f services/rerouter/Dockerfile services/rerouter/
+docker push ghcr.io/2zrhun/cityflow-rerouter:latest
+
 docker build --platform linux/arm64 -t ghcr.io/2zrhun/cityflow-backend-api-auth:latest -f Backend_API_Auth/Dockerfile Backend_API_Auth/
 docker push ghcr.io/2zrhun/cityflow-backend-api-auth:latest
 
@@ -407,6 +414,9 @@ kubectl -n cityflow port-forward svc/backend-api-auth 8081:8080
 
 # Predictor
 kubectl -n cityflow port-forward svc/predictor 8083:8080
+
+# Rerouter
+kubectl -n cityflow port-forward svc/rerouter 8084:8080
 
 # ArgoCD UI (https://localhost:8443, admin + mot de passe ci-dessous)
 kubectl -n argocd port-forward svc/argocd-server 8443:443
@@ -430,6 +440,7 @@ dossier `charts/cityflow/`. Tout push sur ce dossier declenche un sync automatiq
 Images GHCR (configurees dans `values-prod.yaml`):
 - `ghcr.io/2zrhun/cityflow-collector:latest`
 - `ghcr.io/2zrhun/cityflow-predictor:latest`
+- `ghcr.io/2zrhun/cityflow-rerouter:latest`
 - `ghcr.io/2zrhun/cityflow-backend-api-auth:latest`
 - `ghcr.io/2zrhun/cityflow-simulator:latest`
 
@@ -501,7 +512,6 @@ Tous les endpoints GET de donnees supportent:
 
 ## 13) Prochaines ameliorations
 
-- service `rerouter` Go (regles de reroutage)
 - dashboard frontend (OpenStreetMap + D3.js)
 - CI/CD pipeline (GitHub Actions: build, test, push images)
 - modele ML avance (XGBoost/LSTM) pour remplacer le baseline heuristique
