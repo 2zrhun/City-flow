@@ -202,6 +202,19 @@ services:
       - cityflow
     restart: unless-stopped
 
+  dashboard:
+    build:
+      context: ./services/dashboard
+      dockerfile: Dockerfile
+    container_name: cityflow-dashboard
+    depends_on:
+      - backend-api-auth
+    ports:
+      - "3001:80"
+    networks:
+      - cityflow
+    restart: unless-stopped
+
   collector:
     build:
       context: ./services/collector

@@ -1,0 +1,407 @@
+/* ── CityFlow Dashboard ── */
+
+:root {
+    --bg-primary: #0f0f23;
+    --bg-secondary: #1a1a2e;
+    --bg-card: #16213e;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --accent-green: #4ade80;
+    --accent-yellow: #fbbf24;
+    --accent-red: #ef4444;
+    --accent-blue: #3b82f6;
+    --border-color: #334155;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: var(--font);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+}
+
+/* ── Auth Page ── */
+
+.auth-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 1rem;
+}
+
+.auth-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 400px;
+}
+
+.auth-logo {
+    font-size: 2rem;
+    font-weight: 700;
+    text-align: center;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.auth-subtitle {
+    text-align: center;
+    color: var(--text-secondary);
+    margin: 0.25rem 0 1.5rem;
+    font-size: 0.875rem;
+}
+
+.auth-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 0.6rem;
+    border: none;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+}
+
+.auth-tab.active {
+    color: var(--accent-blue);
+    border-bottom-color: var(--accent-blue);
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.3rem;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+    border-color: var(--accent-blue);
+}
+
+.btn-primary {
+    width: 100%;
+    padding: 0.7rem;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent-blue);
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 0.5rem;
+    transition: opacity 0.2s;
+}
+
+.btn-primary:hover { opacity: 0.9; }
+
+.auth-error {
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--accent-red);
+    font-size: 0.8rem;
+    margin-bottom: 0.5rem;
+}
+
+.hidden { display: none; }
+
+/* ── Dashboard Header ── */
+
+.dashboard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.5rem;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dashboard-header h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.status-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 12px;
+    font-weight: 500;
+}
+
+.status-badge.connected { background: rgba(74,222,128,0.15); color: var(--accent-green); }
+.status-badge.connecting { background: rgba(251,191,36,0.15); color: var(--accent-yellow); }
+.status-badge.disconnected { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+
+#btn-logout {
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+#btn-logout:hover {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+}
+
+/* ── Dashboard Grid ── */
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+}
+
+.panel h2 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.75rem;
+}
+
+.map-panel { grid-column: 1 / -1; }
+.metrics-panel { grid-column: 1 / -1; }
+
+/* ── SVG Map ── */
+
+.traffic-map {
+    width: 100%;
+    max-height: 380px;
+    display: block;
+}
+
+.road-segment {
+    transition: fill 0.5s ease;
+}
+
+.road-label {
+    font-size: 11px;
+    fill: white;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.road-value {
+    font-size: 9px;
+    fill: rgba(255,255,255,0.7);
+    pointer-events: none;
+}
+
+@keyframes sensor-pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.3; }
+    100% { opacity: 1; }
+}
+
+.sensor-dot {
+    animation: sensor-pulse 2s infinite;
+}
+
+/* ── Metric Cards ── */
+
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+
+.metric-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    border-left: 3px solid var(--text-secondary);
+    transition: border-left-color 0.5s;
+}
+
+.metric-card.free { border-left-color: var(--accent-green); }
+.metric-card.moderate { border-left-color: var(--accent-yellow); }
+.metric-card.congested { border-left-color: var(--accent-red); }
+
+.metric-card-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.metric-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    padding: 0.15rem 0;
+}
+
+.metric-label { color: var(--text-secondary); }
+.metric-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── Predictions Panel ── */
+
+.prediction-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.prediction-item:last-child { border-bottom: none; }
+
+.prediction-road {
+    font-size: 0.8rem;
+    font-weight: 600;
+    min-width: 110px;
+}
+
+.prediction-bar-wrap {
+    flex: 1;
+    height: 20px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.prediction-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s, background 0.5s;
+}
+
+.prediction-bar.low { background: var(--accent-green); }
+.prediction-bar.medium { background: var(--accent-yellow); }
+.prediction-bar.high { background: var(--accent-red); }
+
+.prediction-score {
+    font-size: 0.75rem;
+    font-weight: 600;
+    min-width: 40px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.prediction-confidence {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    min-width: 45px;
+    text-align: right;
+}
+
+/* ── Reroutes Panel ── */
+
+.reroute-item {
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+}
+
+.reroute-item:last-child { margin-bottom: 0; }
+
+.reroute-route {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+}
+
+.reroute-arrow { color: var(--accent-yellow); margin: 0 0.3rem; }
+
+.reroute-reason {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.4rem;
+}
+
+.reroute-badges {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+}
+
+.badge-co2 { background: rgba(74,222,128,0.15); color: var(--accent-green); }
+.badge-eta { background: rgba(59,130,246,0.15); color: var(--accent-blue); }
+
+.empty-state {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    padding: 2rem 0;
+}
+
+/* ── Charts ── */
+
+.chart-panel canvas {
+    max-height: 250px;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 768px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+}

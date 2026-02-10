@@ -23,6 +23,9 @@ predictor:
 rerouter:
   image: ghcr.io/2zrhun/cityflow-rerouter:latest
 
+dashboard:
+  image: ghcr.io/2zrhun/cityflow-dashboard:latest
+
 simulator:
   image: ghcr.io/2zrhun/cityflow-simulator:latest
 

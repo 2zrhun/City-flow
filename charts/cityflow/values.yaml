@@ -74,6 +74,13 @@ rerouter:
     type: ClusterIP
     port: 8080
 
+dashboard:
+  enabled: true
+  image: cityflow/dashboard:latest
+  service:
+    type: ClusterIP
+    port: 80
+
 backendApiAuth:
   enabled: true
   image: cityflow/backend-api-auth:latest
