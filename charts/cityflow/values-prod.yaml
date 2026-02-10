@@ -6,7 +6,7 @@ secrets:
 
 mosquitto:
   config:
-    allowAnonymous: false
+    allowAnonymous: true
 
 redis:
   image: redis:7-alpine
