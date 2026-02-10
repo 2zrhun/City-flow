@@ -429,6 +429,22 @@ body {
 
 .route-option-meta b { color: var(--text-primary); }
 
+.route-co2 {
+    font-size: 0.7rem;
+    color: var(--accent-green);
+    margin-top: 3px;
+}
+
+.eco-badge {
+    background: rgba(74, 222, 128, 0.2);
+    color: var(--accent-green);
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+}
+
 /* ── Traffic Warnings ── */
 
 .traffic-warning {

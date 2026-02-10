@@ -65,6 +65,21 @@ function getCongestionLevel(speed, occupancy) {
     return 'moderate';
 }
 
+// ── CO2 Estimation ──
+
+function estimateCO2(route) {
+    const distKm = route.summary.totalDistance / 1000;
+    const timeH = route.summary.totalTime / 3600;
+    const avgSpeed = timeH > 0 ? distKm / timeH : 50;
+    let factor; // g CO2/km (speed-based emission curve)
+    if (avgSpeed < 15) factor = 280;       // heavy stop-and-go
+    else if (avgSpeed < 30) factor = 230;  // congested
+    else if (avgSpeed < 50) factor = 180;  // moderate urban
+    else if (avgSpeed < 80) factor = 150;  // free flow (optimal)
+    else factor = 170;                     // highway (less efficient)
+    return (factor * distKm) / 1000;       // kg CO2
+}
+
 // ── Leaflet Map ──
 
 function initMap() {
@@ -310,11 +325,17 @@ function renderRouteSummary(routes) {
     if (!container || !panel) return;
     panel.classList.remove('hidden');
 
+    // Compute CO2 for all routes and find the greenest
+    const co2Values = routes.map(r => estimateCO2(r));
+    const minCO2 = Math.min(...co2Values);
+
     container.innerHTML = routes.map((route, i) => {
         const distKm = (route.summary.totalDistance / 1000).toFixed(1);
         const etaMin = Math.round(route.summary.totalTime / 60);
         const etaStr = etaMin >= 60 ? `${Math.floor(etaMin / 60)}h ${etaMin % 60}min` : `${etaMin} min`;
         const name = route.name || `Route ${i + 1}`;
+        const co2Kg = co2Values[i];
+        const isEco = co2Kg === minCO2 && routes.length > 1;
         return `<div class="route-option ${i === activeRouteIndex ? 'selected' : ''}" data-route-index="${i}">
             <div class="route-option-index">${i + 1}</div>
             <div class="route-option-details">
@@ -322,6 +343,9 @@ function renderRouteSummary(routes) {
                 <div class="route-option-meta">
                     <span><b>${distKm}</b> km</span>
                     <span><b>${etaStr}</b></span>
+                </div>
+                <div class="route-co2">
+                    &#127807; <b>${co2Kg.toFixed(1)} kg</b> CO&#8322;${isEco ? '<span class="eco-badge">Eco</span>' : ''}
                 </div>
             </div>
         </div>`;
