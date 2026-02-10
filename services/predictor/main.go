@@ -18,11 +18,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+	"gonum.org/v1/gonum/stat"
 )
 
 const (
-	maxSpeed = 90.0
-	maxFlow  = 120.0
+	maxSpeed  = 90.0
+	maxFlow   = 120.0
+	ewmaAlpha = 0.7 // EWMA blending factor (higher = more weight on predicted)
 )
 
 type Prediction struct {
@@ -32,6 +34,15 @@ type Prediction struct {
 	CongestionScore float64   `json:"congestion_score"`
 	Confidence      float64   `json:"confidence"`
 	ModelVersion    string    `json:"model_version"`
+}
+
+// bucketData holds aggregated traffic metrics for a single time bucket + road.
+type bucketData struct {
+	offsetMin float64
+	avgSpeed  float64
+	avgOcc    float64
+	avgFlow   float64
+	samples   int64
 }
 
 var (
@@ -68,9 +79,8 @@ func main() {
 	intervalSec := getEnvInt("PREDICTION_INTERVAL_SEC", 60)
 	lookbackMin := getEnvInt("LOOKBACK_WINDOW_MIN", 30)
 	horizonMin := getEnvInt("HORIZON_MIN", 30)
-	modelVersion := getEnv("MODEL_VERSION", "baseline-v1")
+	modelVersion := getEnv("MODEL_VERSION", "ewma-lr-v2")
 
-	// DB pool
 	dbPool, err := pgxpool.New(ctx, dbDSN)
 	if err != nil {
 		log.Fatalf("db pool init failed: %v", err)
@@ -82,7 +92,6 @@ func main() {
 	}
 	log.Printf("db connected")
 
-	// Redis (required for real-time)
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
 		log.Fatalf("invalid REDIS_URL: %v", err)
@@ -95,17 +104,14 @@ func main() {
 	}
 	log.Printf("redis connected: %s", redisURL)
 
-	// HTTP health + metrics
 	go serveHTTP(metricsAddr)
 
-	// Prediction loop
 	interval := time.Duration(intervalSec) * time.Second
 	lookback := time.Duration(lookbackMin) * time.Minute
 
 	log.Printf("predictor running: interval=%s lookback=%s horizon=%dm model=%s",
 		interval, lookback, horizonMin, modelVersion)
 
-	// Run first cycle immediately
 	runCycle(ctx, dbPool, redisClient, lookback, horizonMin, modelVersion)
 
 	ticker := time.NewTicker(interval)
@@ -129,13 +135,22 @@ func runCycle(ctx context.Context, dbPool *pgxpool.Pool, redisClient *redis.Clie
 	}()
 
 	now := time.Now().UTC().Truncate(time.Second)
+	windowStart := now.Add(-lookback)
 
+	// Query time-bucketed data using TimescaleDB time_bucket()
 	rows, err := dbPool.Query(ctx, `
-		SELECT road_id, AVG(speed_kmh), AVG(occupancy), AVG(flow_rate), COUNT(*)
+		SELECT
+			time_bucket('5 minutes', ts) AS bucket,
+			road_id,
+			AVG(speed_kmh)  AS avg_speed,
+			AVG(occupancy)  AS avg_occ,
+			AVG(flow_rate)  AS avg_flow,
+			COUNT(*)        AS samples
 		FROM traffic_raw
 		WHERE ts >= $1
-		GROUP BY road_id
-	`, now.Add(-lookback))
+		GROUP BY bucket, road_id
+		ORDER BY road_id, bucket
+	`, windowStart)
 	if err != nil {
 		predictionsFailed.Inc()
 		log.Printf("query traffic_raw failed: %v", err)
@@ -143,30 +158,31 @@ func runCycle(ctx context.Context, dbPool *pgxpool.Pool, redisClient *redis.Clie
 	}
 	defer rows.Close()
 
-	var predictions []Prediction
-	for rows.Next() {
-		var roadID string
-		var avgSpeed, avgOccupancy, avgFlow float64
-		var sampleCount int64
+	// Group buckets by road
+	roadBuckets := make(map[string][]bucketData)
+	totalSamples := make(map[string]int64)
 
-		if err := rows.Scan(&roadID, &avgSpeed, &avgOccupancy, &avgFlow, &sampleCount); err != nil {
+	for rows.Next() {
+		var bucketTS time.Time
+		var roadID string
+		var avgSpeed, avgOcc, avgFlow float64
+		var samples int64
+
+		if err := rows.Scan(&bucketTS, &roadID, &avgSpeed, &avgOcc, &avgFlow, &samples); err != nil {
 			predictionsFailed.Inc()
 			log.Printf("row scan failed: %v", err)
 			continue
 		}
 
-		score := computeCongestionScore(avgSpeed, avgOccupancy, avgFlow)
-		confidence := math.Min(1.0, float64(sampleCount)/100.0)
-
-		predictions = append(predictions, Prediction{
-			TS:              now,
-			RoadID:          roadID,
-			HorizonMin:      horizonMin,
-			CongestionScore: score,
-			Confidence:      confidence,
-			ModelVersion:    modelVersion,
+		offsetMin := bucketTS.Sub(windowStart).Minutes()
+		roadBuckets[roadID] = append(roadBuckets[roadID], bucketData{
+			offsetMin: offsetMin,
+			avgSpeed:  avgSpeed,
+			avgOcc:    avgOcc,
+			avgFlow:   avgFlow,
+			samples:   samples,
 		})
-		predictionsGenerated.Inc()
+		totalSamples[roadID] += samples
 	}
 	if rows.Err() != nil {
 		predictionsFailed.Inc()
@@ -174,30 +190,123 @@ func runCycle(ctx context.Context, dbPool *pgxpool.Pool, redisClient *redis.Clie
 		return
 	}
 
-	if len(predictions) == 0 {
+	if len(roadBuckets) == 0 {
 		log.Printf("no traffic data in lookback window, skipping")
 		return
 	}
 
-	// Store predictions
-	stored := storePredictions(ctx, dbPool, predictions)
+	// Generate predictions per road
+	var predictions []Prediction
+	lbMin := lookback.Minutes()
+	futureOffset := lbMin + float64(horizonMin)
+	hour := now.Hour()
 
-	// Publish to Redis
+	for roadID, buckets := range roadBuckets {
+		if len(buckets) == 0 {
+			continue
+		}
+
+		// Compute congestion score for each time bucket
+		xs := make([]float64, len(buckets))
+		ys := make([]float64, len(buckets))
+		for i, b := range buckets {
+			xs[i] = b.offsetMin
+			ys[i] = computeCongestionScore(b.avgSpeed, b.avgOcc, b.avgFlow)
+		}
+
+		currentScore := ys[len(ys)-1]
+
+		var finalScore float64
+		var trendStability float64
+
+		if len(buckets) >= 2 {
+			// Fit linear regression on the time-series of congestion scores
+			slope, intercept := fitLinearRegression(xs, ys)
+
+			// Extrapolate to now + horizon
+			predicted := slope*futureOffset + intercept
+
+			// EWMA blend: weight predicted vs current
+			blended := ewma(predicted, currentScore, ewmaAlpha)
+
+			// Rush hour adjustment
+			finalScore = blended * rushHourFactor(hour)
+			finalScore = math.Max(0.0, math.Min(1.0, finalScore))
+
+			// Trend stability: lower confidence when slope is steep (volatile data)
+			trendStability = math.Max(0.3, 1.0-math.Abs(slope)*10)
+		} else {
+			// Single bucket fallback
+			finalScore = currentScore * rushHourFactor(hour)
+			finalScore = math.Max(0.0, math.Min(1.0, finalScore))
+			trendStability = 0.5
+		}
+
+		sampleConfidence := math.Min(1.0, float64(totalSamples[roadID])/50.0)
+		confidence := sampleConfidence * trendStability
+
+		predictions = append(predictions, Prediction{
+			TS:              now,
+			RoadID:          roadID,
+			HorizonMin:      horizonMin,
+			CongestionScore: math.Round(finalScore*1000) / 1000,
+			Confidence:      math.Round(confidence*100) / 100,
+			ModelVersion:    modelVersion,
+		})
+		predictionsGenerated.Inc()
+	}
+
+	if len(predictions) == 0 {
+		log.Printf("no predictions generated")
+		return
+	}
+
+	stored := storePredictions(ctx, dbPool, predictions)
 	published := publishPredictions(ctx, redisClient, predictions)
 
-	log.Printf("prediction cycle completed: %d roads, %d stored, %d published (%.2fs)",
-		len(predictions), stored, published, time.Since(start).Seconds())
+	log.Printf("prediction cycle [%s]: %d roads, %d stored, %d published (%.2fs)",
+		modelVersion, len(predictions), stored, published, time.Since(start).Seconds())
 }
 
+// ── ML Functions ──
+
+// computeCongestionScore computes a weighted congestion score from traffic metrics.
 func computeCongestionScore(avgSpeed, avgOccupancy, avgFlow float64) float64 {
 	speedScore := 1.0 - (avgSpeed / maxSpeed)
 	occupancyScore := avgOccupancy
 	flowScore := avgFlow / maxFlow
 
 	score := 0.4*speedScore + 0.4*occupancyScore + 0.2*flowScore
-
 	return math.Max(0.0, math.Min(1.0, score))
 }
+
+// ewma computes Exponential Weighted Moving Average.
+func ewma(predicted, current, alpha float64) float64 {
+	return alpha*predicted + (1-alpha)*current
+}
+
+// rushHourFactor returns a time-of-day multiplier for congestion prediction.
+func rushHourFactor(hour int) float64 {
+	switch {
+	case (hour >= 7 && hour < 9) || (hour >= 17 && hour < 19):
+		return 1.15 // morning/evening rush
+	case hour >= 21 || hour < 6:
+		return 0.85 // night
+	default:
+		return 1.0
+	}
+}
+
+// fitLinearRegression fits y = slope*x + intercept using gonum.
+func fitLinearRegression(xs, ys []float64) (slope, intercept float64) {
+	if len(xs) < 2 {
+		return 0, ys[0]
+	}
+	intercept, slope = stat.LinearRegression(xs, ys, nil, false)
+	return slope, intercept
+}
+
+// ── Storage & Publishing ──
 
 func storePredictions(ctx context.Context, dbPool *pgxpool.Pool, predictions []Prediction) int {
 	stored := 0

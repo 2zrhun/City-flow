@@ -168,7 +168,7 @@ services:
       PREDICTION_INTERVAL_SEC: ${PREDICTOR_INTERVAL_SEC:-60}
       LOOKBACK_WINDOW_MIN: ${PREDICTOR_LOOKBACK_MIN:-30}
       HORIZON_MIN: ${PREDICTOR_HORIZON_MIN:-30}
-      MODEL_VERSION: baseline-v1
+      MODEL_VERSION: ewma-lr-v2
     depends_on:
       timescaledb:
         condition: service_healthy

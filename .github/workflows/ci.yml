@@ -26,7 +26,7 @@ jobs:
             go-version: "1.22"
           - service: predictor
             context: services/predictor
-            go-version: "1.22"
+            go-version: "1.24"
           - service: rerouter
             context: services/rerouter
             go-version: "1.22"
