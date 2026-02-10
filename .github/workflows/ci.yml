@@ -51,7 +51,7 @@ jobs:
 
       - name: Test
         working-directory: ${{ matrix.context }}
-        run: go test ./... -v -count=1 || true
+        run: go test ./... -v -count=1
 
   # ── Node.js simulator: build check ──
   node-build:
