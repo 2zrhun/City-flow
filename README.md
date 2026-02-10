@@ -52,7 +52,7 @@ Architecture en 5 couches:
 
 4. **Couche exposition**
 - `backend-api-auth` (Go/Gin) sert REST + WebSocket avec authentification JWT, cache Redis et pagination cursor.
-- `dashboard` (OpenStreetMap + D3.js) affiche trafic, prediction, reroutage (a construire).
+- `dashboard` (vanilla JS + Chart.js) affiche trafic live, predictions, reroutage via SVG map et graphes temps reel.
 - Entree: TimescaleDB + Redis (pub/sub pour WebSocket).
 - Sortie: vue operateur temps reel.
 
@@ -223,15 +223,20 @@ Done attendu:
 - endpoints fonctionnels
 - diffusion live cote WebSocket
 
-### Jour 4 - Dashboard demo
+### Jour 4 - Dashboard demo **FAIT**
 
-- Carte OpenStreetMap
-- Graphes D3.js (trafic live + previsions)
-- Affichage recommandations reroutage
+- ~~Construire dashboard frontend~~ **fait** — vanilla JS + Chart.js + SVG map
+- ~~Login/Register avec JWT~~ **fait** — formulaire auth, token stocke en localStorage
+- ~~Carte SVG temps reel~~ **fait** — 5 routes colorees (vert/jaune/rouge) mises a jour via WebSocket
+- ~~Cartes metriques par route~~ **fait** — vitesse, debit, occupation en temps reel
+- ~~Panneau predictions~~ **fait** — barres de congestion + confiance par route (polling 30s)
+- ~~Panneau reroutage~~ **fait** — recommandations avec gains CO2/ETA
+- ~~Graphes Chart.js~~ **fait** — tendances vitesse + prevision congestion
+- ~~Deploiement nginx + reverse proxy~~ **fait** — nginx:alpine avec proxy vers backend-api-auth
 
 Done attendu:
 
-- demo utilisateur de bout en bout
+- demo utilisateur de bout en bout **OK**
 
 ### Jour 5 - K3s + packaging final
 
@@ -305,6 +310,7 @@ URLs locales:
 - Collector metrics/health: `http://localhost:8080/metrics`, `http://localhost:8080/health`
 - Predictor metrics/health: `http://localhost:8083/metrics`, `http://localhost:8083/health`
 - Rerouter metrics/health: `http://localhost:8084/metrics`, `http://localhost:8084/health`
+- Dashboard: `http://localhost:3001` (login puis vue operateur temps reel)
 - Grafana: `http://localhost:3000` (admin/admin par defaut)
 - Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100`
@@ -318,7 +324,7 @@ URLs locales:
 
 | Namespace | Contenu | Role |
 |-----------|---------|------|
-| `cityflow` | 12 pods applicatifs (voir detail ci-dessous) | Stack CityFlow complete, deployee via Helm chart |
+| `cityflow` | 13 pods applicatifs (voir detail ci-dessous) | Stack CityFlow complete, deployee via Helm chart |
 | `argocd` | 6 deployments ArgoCD (server, repo-server, app-controller, dex, redis, notifications) | GitOps — synchronise automatiquement le Helm chart depuis Git |
 | `kube-system` | CoreDNS, kube-proxy, metrics-server, local-path-provisioner | Composants internes Kubernetes |
 | `kube-node-lease` | Leases des noeuds | Heartbeat des noeuds (interne K8s) |
@@ -338,6 +344,7 @@ URLs locales:
 | `rerouter` | Deployment | 8080 | Recommande des reroutages si congestion > 0.5, publie sur Redis |
 | `simulator` | Deployment | — | Emule 10 capteurs IoT, publie sur MQTT toutes les 2s |
 | `backend-api-auth` | Deployment | 8080 | API REST + JWT + WebSocket + cache Redis |
+| `dashboard` | Deployment | 80 | Frontend web (vanilla JS + Chart.js + nginx reverse proxy) |
 | `prometheus` | Deployment | 9090 | Collecte des metriques (`/metrics`) |
 | `grafana` | Deployment | 3000 | Dashboards (metriques + logs) |
 | `loki` | Deployment | 3100 | Agregation de logs |
@@ -402,6 +409,9 @@ docker push ghcr.io/2zrhun/cityflow-backend-api-auth:latest
 docker build --platform linux/arm64 -t ghcr.io/2zrhun/cityflow-simulator:latest -f simulator/Dockerfile simulator/
 docker push ghcr.io/2zrhun/cityflow-simulator:latest
 
+docker build --platform linux/arm64 -t ghcr.io/2zrhun/cityflow-dashboard:latest services/dashboard/
+docker push ghcr.io/2zrhun/cityflow-dashboard:latest
+
 # 4) Installer ArgoCD et deployer
 ./scripts/bootstrap-argocd.sh
 ```
@@ -417,6 +427,9 @@ kubectl -n cityflow port-forward svc/predictor 8083:8080
 
 # Rerouter
 kubectl -n cityflow port-forward svc/rerouter 8084:8080
+
+# Dashboard (http://localhost:3001)
+kubectl -n cityflow port-forward svc/dashboard 3001:80
 
 # ArgoCD UI (https://localhost:8443, admin + mot de passe ci-dessous)
 kubectl -n argocd port-forward svc/argocd-server 8443:443
@@ -443,6 +456,7 @@ Images GHCR (configurees dans `values-prod.yaml`):
 - `ghcr.io/2zrhun/cityflow-rerouter:latest`
 - `ghcr.io/2zrhun/cityflow-backend-api-auth:latest`
 - `ghcr.io/2zrhun/cityflow-simulator:latest`
+- `ghcr.io/2zrhun/cityflow-dashboard:latest`
 
 ## 9) API (implementee)
 
@@ -512,7 +526,6 @@ Tous les endpoints GET de donnees supportent:
 
 ## 13) Prochaines ameliorations
 
-- dashboard frontend (OpenStreetMap + D3.js)
 - CI/CD pipeline (GitHub Actions: build, test, push images)
 - modele ML avance (XGBoost/LSTM) pour remplacer le baseline heuristique
 - enrichissement meteo/evenements en production
