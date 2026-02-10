@@ -1,18 +1,28 @@
+# Environment
 .env
 **/.env
 
 # Node
 node_modules/
 
-# Go
+# Go binaries
 bin/
 *.exe
 *.test
 *.out
+services/predictor/predictor
+services/rerouter/rerouter
+services/collector/collector
+Backend_API_Auth/traffic-api
 
 # IDE/OS
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+
+# Claude AI
+.claude/
 
 # Local volumes/export files
 *.log
