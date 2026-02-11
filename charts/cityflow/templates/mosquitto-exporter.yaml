@@ -31,6 +31,7 @@ spec:
   selector:
     app: mosquitto-exporter
   ports:
-    - port: {{ .Values.mosquittoExporter.service.port }}
+    - name: http
+      port: {{ .Values.mosquittoExporter.service.port }}
       targetPort: 9234
 {{- end }}

@@ -91,6 +91,7 @@ spec:
   selector:
     app: prometheus
   ports:
-    - port: {{ .Values.prometheus.service.port }}
+    - name: http
+      port: {{ .Values.prometheus.service.port }}
       targetPort: 9090
 {{- end }}

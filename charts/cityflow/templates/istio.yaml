@@ -1,0 +1,337 @@
+{{- if .Values.istio.enabled }}
+# ──────────────────────────────────────────────
+# Gateway — Istio IngressGateway entrypoint
+# ──────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: cityflow-gateway
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        {{- range .Values.istio.gateway.hosts }}
+        - {{ . | quote }}
+        {{- end }}
+---
+# ──────────────────────────────────────────────
+# VirtualService — Dashboard (main app)
+# ──────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: cityflow-dashboard
+spec:
+  hosts:
+    - {{ index .Values.istio.gateway.hosts 0 | quote }}
+    - "localhost"
+  gateways:
+    - cityflow-gateway
+  http:
+    - route:
+        - destination:
+            host: dashboard
+            port:
+              number: {{ .Values.dashboard.service.port }}
+---
+# ──────────────────────────────────────────────
+# VirtualService — Grafana
+# ──────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: cityflow-grafana
+spec:
+  hosts:
+    - {{ index .Values.istio.gateway.hosts 1 | quote }}
+  gateways:
+    - cityflow-gateway
+  http:
+    - route:
+        - destination:
+            host: grafana
+            port:
+              number: {{ .Values.grafana.service.port }}
+---
+# ──────────────────────────────────────────────
+# DestinationRules — Traffic policies
+# ──────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: backend-api-auth
+spec:
+  host: backend-api-auth
+  trafficPolicy:
+    connectionPool:
+      http:
+        h2UpgradePolicy: UPGRADE
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 100
+      tcp:
+        maxConnections: 100
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: mosquitto
+spec:
+  host: mosquitto
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 50
+        connectTimeout: 10s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: timescaledb
+spec:
+  host: timescaledb
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 50
+        connectTimeout: 10s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: redis
+spec:
+  host: redis
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 5s
+---
+# ──────────────────────────────────────────────
+# PeerAuthentication — mTLS STRICT namespace-wide
+# ──────────────────────────────────────────────
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: cityflow-mtls
+spec:
+  mtls:
+    mode: STRICT
+---
+# Loki exception: PERMISSIVE for Promtail (no sidecar)
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: loki-permissive
+spec:
+  selector:
+    matchLabels:
+      app: loki
+  portLevelMtls:
+    3100:
+      mode: PERMISSIVE
+---
+# ──────────────────────────────────────────────
+# AuthorizationPolicies — Least-privilege access
+# ──────────────────────────────────────────────
+
+# Allow Istio IngressGateway → dashboard
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-ingress-to-dashboard
+spec:
+  selector:
+    matchLabels:
+      app: dashboard
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+---
+# Allow Istio IngressGateway → grafana
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-ingress-to-grafana
+spec:
+  selector:
+    matchLabels:
+      app: grafana
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+---
+# Allow dashboard (nginx proxy_pass) + ingress → backend-api-auth
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-to-backend-api-auth
+spec:
+  selector:
+    matchLabels:
+      app: backend-api-auth
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+---
+# Allow simulator + collector → mosquitto (MQTT)
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-mqtt-clients
+spec:
+  selector:
+    matchLabels:
+      app: mosquitto
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+---
+# Allow all app services → timescaledb
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-db-clients
+spec:
+  selector:
+    matchLabels:
+      app: timescaledb
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+---
+# Allow all app services → redis
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-redis-clients
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+---
+# Allow prometheus → scrape targets
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-prometheus-scrape-collector
+spec:
+  selector:
+    matchLabels:
+      app: collector
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-prometheus-scrape-predictor
+spec:
+  selector:
+    matchLabels:
+      app: predictor
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-prometheus-scrape-rerouter
+spec:
+  selector:
+    matchLabels:
+      app: rerouter
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-prometheus-scrape-redis-exporter
+spec:
+  selector:
+    matchLabels:
+      app: redis-exporter
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-prometheus-scrape-mosquitto-exporter
+spec:
+  selector:
+    matchLabels:
+      app: mosquitto-exporter
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+---
+# Allow grafana → prometheus + loki
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-grafana-to-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: prometheus
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+---
+# Allow grafana + promtail → loki (promtail is unauthenticated via PERMISSIVE)
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-to-loki
+spec:
+  selector:
+    matchLabels:
+      app: loki
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/{{ .Values.global.namespace }}/sa/default"]
+    - from: [{}]
+{{- end }}

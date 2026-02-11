@@ -41,6 +41,7 @@ spec:
   selector:
     app: dashboard
   ports:
-    - port: {{ .Values.dashboard.service.port }}
+    - name: http
+      port: {{ .Values.dashboard.service.port }}
       targetPort: 80
 {{- end }}

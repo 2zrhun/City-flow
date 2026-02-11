@@ -46,6 +46,7 @@ spec:
   selector:
     app: mosquitto
   ports:
-    - port: {{ .Values.mosquitto.service.port }}
+    - name: tcp-mqtt
+      port: {{ .Values.mosquitto.service.port }}
       targetPort: 1883
 {{- end }}

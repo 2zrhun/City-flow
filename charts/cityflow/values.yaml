@@ -147,3 +147,10 @@ grafana:
   persistence:
     enabled: true
     size: 5Gi
+
+istio:
+  enabled: true
+  gateway:
+    hosts:
+      - "cityflow.local"
+      - "grafana.cityflow.local"

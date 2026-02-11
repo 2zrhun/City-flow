@@ -63,6 +63,8 @@ spec:
     metadata:
       labels:
         app: promtail
+      annotations:
+        sidecar.istio.io/inject: "false"
     spec:
       serviceAccountName: promtail
       containers:

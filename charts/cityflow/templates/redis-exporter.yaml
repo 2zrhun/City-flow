@@ -31,6 +31,7 @@ spec:
   selector:
     app: redis-exporter
   ports:
-    - port: {{ .Values.redisExporter.service.port }}
+    - name: http
+      port: {{ .Values.redisExporter.service.port }}
       targetPort: 9121
 {{- end }}

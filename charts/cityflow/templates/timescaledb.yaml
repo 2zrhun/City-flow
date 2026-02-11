@@ -124,6 +124,7 @@ spec:
   selector:
     app: timescaledb
   ports:
-    - port: {{ .Values.timescaledb.service.port }}
+    - name: tcp-postgresql
+      port: {{ .Values.timescaledb.service.port }}
       targetPort: 5432
 {{- end }}

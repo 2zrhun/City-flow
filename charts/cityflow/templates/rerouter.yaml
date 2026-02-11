@@ -52,6 +52,7 @@ spec:
   selector:
     app: rerouter
   ports:
-    - port: {{ .Values.rerouter.service.port }}
+    - name: http
+      port: {{ .Values.rerouter.service.port }}
       targetPort: 8080
 {{- end }}

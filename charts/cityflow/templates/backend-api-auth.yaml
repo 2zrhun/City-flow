@@ -85,6 +85,7 @@ spec:
   selector:
     app: backend-api-auth
   ports:
-    - port: {{ .Values.backendApiAuth.service.port }}
+    - name: http
+      port: {{ .Values.backendApiAuth.service.port }}
       targetPort: 8080
 {{- end }}

@@ -100,6 +100,7 @@ spec:
   selector:
     app: loki
   ports:
-    - port: {{ .Values.loki.service.port }}
+    - name: http
+      port: {{ .Values.loki.service.port }}
       targetPort: 3100
 {{- end }}

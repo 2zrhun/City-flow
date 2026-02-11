@@ -52,6 +52,7 @@ spec:
   selector:
     app: collector
   ports:
-    - port: {{ .Values.collector.service.port }}
+    - name: http
+      port: {{ .Values.collector.service.port }}
       targetPort: 8080
 {{- end }}

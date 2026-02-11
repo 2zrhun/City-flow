@@ -111,6 +111,7 @@ spec:
   selector:
     app: grafana
   ports:
-    - port: {{ .Values.grafana.service.port }}
+    - name: http
+      port: {{ .Values.grafana.service.port }}
       targetPort: 3000
 {{- end }}
