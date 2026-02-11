@@ -11,12 +11,14 @@ data:
     datasources:
       - name: Prometheus
         type: prometheus
+        uid: prometheus
         access: proxy
         url: http://prometheus:9090
         isDefault: true
         editable: true
       - name: Loki
         type: loki
+        uid: loki
         access: proxy
         url: http://loki:3100
         editable: true
@@ -70,6 +72,15 @@ spec:
             - name: grafana-datasources
               mountPath: /etc/grafana/provisioning/datasources/datasource.yml
               subPath: datasource.yml
+            - name: grafana-dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards/dashboards.yml
+              subPath: dashboards.yml
+            - name: grafana-dashboard-operations
+              mountPath: /etc/grafana/provisioning/dashboards/cityflow-operations.json
+              subPath: cityflow-operations.json
+            - name: grafana-dashboard-business
+              mountPath: /etc/grafana/provisioning/dashboards/cityflow-business.json
+              subPath: cityflow-business.json
       volumes:
         - name: grafana-data
 {{- if .Values.grafana.persistence.enabled }}
@@ -81,6 +92,15 @@ spec:
         - name: grafana-datasources
           configMap:
             name: grafana-datasources
+        - name: grafana-dashboard-provider
+          configMap:
+            name: grafana-dashboard-provider
+        - name: grafana-dashboard-operations
+          configMap:
+            name: grafana-dashboard-operations
+        - name: grafana-dashboard-business
+          configMap:
+            name: grafana-dashboard-business
 ---
 apiVersion: v1
 kind: Service

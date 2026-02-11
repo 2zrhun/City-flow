@@ -56,7 +56,7 @@ predictor:
   predictionIntervalSec: 60
   lookbackWindowMin: 30
   horizonMin: 30
-  modelVersion: baseline-v1
+  modelVersion: ewma-lr-v2
   metricsAddr: ":8080"
   redisUrl: "redis://redis:6379/0"
   service:
@@ -101,6 +101,18 @@ simulator:
   image: cityflow/simulator:latest
   publishIntervalMs: 2000
   sensorCount: 10
+
+redisExporter:
+  enabled: true
+  image: oliver006/redis_exporter:latest
+  service:
+    port: 9121
+
+mosquittoExporter:
+  enabled: true
+  image: sapcc/mosquitto-exporter:latest
+  service:
+    port: 9234
 
 prometheus:
   enabled: true

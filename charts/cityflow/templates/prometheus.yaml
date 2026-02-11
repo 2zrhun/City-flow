@@ -15,6 +15,18 @@ data:
       - job_name: cityflow-collector
         static_configs:
           - targets: ["collector:8080"]
+      - job_name: cityflow-predictor
+        static_configs:
+          - targets: ["predictor:8080"]
+      - job_name: cityflow-rerouter
+        static_configs:
+          - targets: ["rerouter:8080"]
+      - job_name: redis
+        static_configs:
+          - targets: ["redis-exporter:9121"]
+      - job_name: mosquitto
+        static_configs:
+          - targets: ["mosquitto-exporter:9234"]
 ---
 {{- if .Values.prometheus.persistence.enabled }}
 apiVersion: v1

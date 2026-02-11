@@ -1,0 +1,36 @@
+{{- if .Values.redisExporter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-exporter
+  template:
+    metadata:
+      labels:
+        app: redis-exporter
+    spec:
+      containers:
+        - name: redis-exporter
+          image: {{ .Values.redisExporter.image }}
+          ports:
+            - containerPort: 9121
+          env:
+            - name: REDIS_ADDR
+              value: "redis://redis:{{ .Values.redis.service.port }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app: redis-exporter
+  ports:
+    - port: {{ .Values.redisExporter.service.port }}
+      targetPort: 9121
+{{- end }}

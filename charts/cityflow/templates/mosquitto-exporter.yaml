@@ -1,0 +1,36 @@
+{{- if .Values.mosquittoExporter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mosquitto-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mosquitto-exporter
+  template:
+    metadata:
+      labels:
+        app: mosquitto-exporter
+    spec:
+      containers:
+        - name: mosquitto-exporter
+          image: {{ .Values.mosquittoExporter.image }}
+          ports:
+            - containerPort: 9234
+          env:
+            - name: BROKER_ENDPOINT
+              value: "tcp://mosquitto:{{ .Values.mosquitto.service.port }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mosquitto-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app: mosquitto-exporter
+  ports:
+    - port: {{ .Values.mosquittoExporter.service.port }}
+      targetPort: 9234
+{{- end }}
