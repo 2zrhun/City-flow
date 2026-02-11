@@ -16,7 +16,7 @@ spec:
       containers:
         - name: dashboard
           image: {{ .Values.dashboard.image }}
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           readinessProbe:
