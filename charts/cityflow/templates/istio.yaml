@@ -20,7 +20,7 @@ spec:
         {{- end }}
 ---
 # ──────────────────────────────────────────────
-# VirtualService — Grafana (matched first by host header)
+# VirtualService — Grafana (host-based)
 # ──────────────────────────────────────────────
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
@@ -39,7 +39,66 @@ spec:
               number: {{ .Values.grafana.service.port }}
 ---
 # ──────────────────────────────────────────────
+# VirtualService — ArgoCD (host-based, cross-namespace)
+# ──────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: cityflow-argocd
+spec:
+  hosts:
+    - "argocd.cityflow.local"
+  gateways:
+    - cityflow-gateway
+  http:
+    - route:
+        - destination:
+            host: argocd-server.argocd.svc.cluster.local
+            port:
+              number: 80
+---
+# ──────────────────────────────────────────────
+# VirtualService — Kiali (host-based, cross-namespace)
+# ──────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: cityflow-kiali
+spec:
+  hosts:
+    - "kiali.cityflow.local"
+  gateways:
+    - cityflow-gateway
+  http:
+    - route:
+        - destination:
+            host: kiali.istio-system.svc.cluster.local
+            port:
+              number: 20001
+---
+# ──────────────────────────────────────────────
+# VirtualService — Prometheus (host-based)
+# ──────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: cityflow-prometheus
+spec:
+  hosts:
+    - "prometheus.cityflow.local"
+  gateways:
+    - cityflow-gateway
+  http:
+    - route:
+        - destination:
+            host: prometheus
+            port:
+              number: {{ .Values.prometheus.service.port }}
+---
+# ──────────────────────────────────────────────
 # VirtualService — Dashboard (catch-all default)
+# Routes /ws/ directly to backend for WebSocket,
+# everything else goes to dashboard nginx
 # ──────────────────────────────────────────────
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
@@ -51,6 +110,14 @@ spec:
   gateways:
     - cityflow-gateway
   http:
+    - match:
+        - uri:
+            prefix: /ws/
+      route:
+        - destination:
+            host: backend-api-auth
+            port:
+              number: {{ .Values.backendApiAuth.service.port }}
     - route:
         - destination:
             host: dashboard
