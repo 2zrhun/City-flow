@@ -215,6 +215,33 @@ services:
       - cityflow
     restart: unless-stopped
 
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: cityflow-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "9121:9121"
+    networks:
+      - cityflow
+    restart: unless-stopped
+
+  mosquitto-exporter:
+    image: sapcc/mosquitto-exporter:latest
+    container_name: cityflow-mosquitto-exporter
+    environment:
+      BROKER_ENDPOINT: tcp://mosquitto:1883
+    depends_on:
+      - mosquitto
+    ports:
+      - "9234:9234"
+    networks:
+      - cityflow
+    restart: unless-stopped
+
   collector:
     build:
       context: ./services/collector
