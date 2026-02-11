@@ -93,11 +93,13 @@ spec:
               command: ["/bin/sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
           livenessProbe:
             exec:
               command: ["/bin/sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
             initialDelaySeconds: 20
             periodSeconds: 15
+            timeoutSeconds: 5
           volumeMounts:
             - name: timescaledb-init
               mountPath: /docker-entrypoint-initdb.d

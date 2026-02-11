@@ -26,11 +26,13 @@ spec:
               command: ["redis-cli", "ping"]
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 5
           livenessProbe:
             exec:
               command: ["redis-cli", "ping"]
             initialDelaySeconds: 10
             periodSeconds: 15
+            timeoutSeconds: 5
           volumeMounts:
             - name: redis-data
               mountPath: /data

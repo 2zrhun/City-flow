@@ -42,7 +42,7 @@ redis:
 
 collector:
   enabled: true
-  image: cityflow/collector:latest
+  image: ghcr.io/2zrhun/cityflow-collector:latest
   mqttTopic: cityflow/traffic/+
   metricsAddr: ":8080"
   redisUrl: "redis://redis:6379/0"
@@ -52,7 +52,7 @@ collector:
 
 predictor:
   enabled: true
-  image: cityflow/predictor:latest
+  image: ghcr.io/2zrhun/cityflow-predictor:latest
   predictionIntervalSec: 60
   lookbackWindowMin: 30
   horizonMin: 30
@@ -65,7 +65,7 @@ predictor:
 
 rerouter:
   enabled: true
-  image: cityflow/rerouter:latest
+  image: ghcr.io/2zrhun/cityflow-rerouter:latest
   rerouteIntervalSec: 60
   congestionThreshold: "0.5"
   metricsAddr: ":8080"
@@ -76,14 +76,14 @@ rerouter:
 
 dashboard:
   enabled: true
-  image: cityflow/dashboard:latest
+  image: ghcr.io/2zrhun/cityflow-dashboard:latest
   service:
     type: ClusterIP
     port: 80
 
 backendApiAuth:
   enabled: true
-  image: cityflow/backend-api-auth:latest
+  image: ghcr.io/2zrhun/cityflow-backend-api-auth:latest
   service:
     type: ClusterIP
     port: 8080
@@ -98,7 +98,7 @@ backendApiAuth:
 
 simulator:
   enabled: true
-  image: cityflow/simulator:latest
+  image: ghcr.io/2zrhun/cityflow-simulator:latest
   publishIntervalMs: 2000
   sensorCount: 10
 
