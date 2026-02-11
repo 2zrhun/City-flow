@@ -20,27 +20,7 @@ spec:
         {{- end }}
 ---
 # ──────────────────────────────────────────────
-# VirtualService — Dashboard (main app)
-# ──────────────────────────────────────────────
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: cityflow-dashboard
-spec:
-  hosts:
-    - {{ index .Values.istio.gateway.hosts 0 | quote }}
-    - "localhost"
-  gateways:
-    - cityflow-gateway
-  http:
-    - route:
-        - destination:
-            host: dashboard
-            port:
-              number: {{ .Values.dashboard.service.port }}
----
-# ──────────────────────────────────────────────
-# VirtualService — Grafana
+# VirtualService — Grafana (matched first by host header)
 # ──────────────────────────────────────────────
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
@@ -48,7 +28,7 @@ metadata:
   name: cityflow-grafana
 spec:
   hosts:
-    - {{ index .Values.istio.gateway.hosts 1 | quote }}
+    - "grafana.cityflow.local"
   gateways:
     - cityflow-gateway
   http:
@@ -57,6 +37,25 @@ spec:
             host: grafana
             port:
               number: {{ .Values.grafana.service.port }}
+---
+# ──────────────────────────────────────────────
+# VirtualService — Dashboard (catch-all default)
+# ──────────────────────────────────────────────
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: cityflow-dashboard
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - cityflow-gateway
+  http:
+    - route:
+        - destination:
+            host: dashboard
+            port:
+              number: {{ .Values.dashboard.service.port }}
 ---
 # ──────────────────────────────────────────────
 # DestinationRules — Traffic policies

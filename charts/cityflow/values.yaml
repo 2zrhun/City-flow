@@ -152,5 +152,4 @@ istio:
   enabled: true
   gateway:
     hosts:
-      - "cityflow.local"
-      - "grafana.cityflow.local"
+      - "*"
