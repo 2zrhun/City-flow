@@ -558,27 +558,7 @@ body {
 .nav-marker-start { background: var(--accent-green); }
 .nav-marker-end { background: var(--accent-red); }
 
-/* ── Right Sidebar (Predictions) ── */
-
-.sidebar-right {
-    position: absolute;
-    top: 56px;
-    right: 12px;
-    width: 280px;
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    overflow-y: auto;
-    max-height: calc(100vh - 68px);
-    scrollbar-width: thin;
-    scrollbar-color: #334155 transparent;
-}
-
-.sidebar-right::-webkit-scrollbar { width: 4px; }
-.sidebar-right::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-
-.predictions-panel { }
+/* ── Prediction Cards (route-aware, in left sidebar) ── */
 
 .predictions-list {
     display: flex;
@@ -628,18 +608,46 @@ body {
     color: var(--text-secondary);
 }
 
+.prediction-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-bottom: 4px;
+}
+
+.prediction-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.prediction-bar-label {
+    font-size: 0.58rem;
+    color: var(--text-secondary);
+    width: 28px;
+    flex-shrink: 0;
+    text-align: right;
+}
+
 .prediction-bar-wrap {
+    flex: 1;
     height: 6px;
     background: rgba(30, 41, 59, 0.9);
     border-radius: 3px;
     overflow: hidden;
-    margin-bottom: 4px;
 }
 
 .prediction-bar {
     height: 100%;
     border-radius: 3px;
     transition: width 0.6s ease, background 0.6s ease;
+}
+
+.prediction-bar-value {
+    font-size: 0.58rem;
+    color: var(--text-secondary);
+    width: 26px;
+    flex-shrink: 0;
 }
 
 .prediction-meta {
@@ -656,21 +664,10 @@ body {
     color: var(--text-secondary);
 }
 
-.predictions-footer {
-    margin-top: 6px;
-    text-align: center;
-}
-
-.predictions-ts {
-    font-size: 0.6rem;
-    color: var(--text-secondary);
-}
-
 /* ── Responsive ── */
 
 @media (max-width: 900px) {
     .sidebar-left { width: 260px; }
-    .sidebar-right { width: 240px; }
 }
 
 @media (max-width: 700px) {
@@ -681,8 +678,5 @@ body {
         max-height: 40vh;
         top: 50px;
         padding: 0 8px;
-    }
-    .sidebar-right {
-        display: none;
     }
 }

@@ -132,6 +132,8 @@ async function loadInitialData() {
 
 // ── Predictions ──
 
+const predictionsState = {}; // latest prediction per road_id
+
 function getCurrentCongestion(roadId) {
     const d = liveState[roadId];
     if (!d) return null;
@@ -162,61 +164,88 @@ function getTrendInfo(current, predicted) {
     return { arrow: '&#9654;', cls: 'stable', label: 'Stable' };
 }
 
-async function loadPredictions() {
-    const list = document.getElementById('predictions-list');
-    const tsEl = document.getElementById('predictions-updated');
-    if (!list) return;
-
+async function fetchPredictions() {
     try {
         const res = await getPredictions({ horizon: 30, limit: 50 });
         const rows = res.data || [];
-        if (rows.length === 0) {
-            list.innerHTML = '<div class="empty-state">No predictions available yet</div>';
-            return;
-        }
-
-        // Latest prediction per road
-        const latest = {};
         for (const r of rows) {
-            if (!latest[r.road_id] || r.ts > latest[r.road_id].ts) {
-                latest[r.road_id] = r;
+            if (!predictionsState[r.road_id] || r.ts > predictionsState[r.road_id].ts) {
+                predictionsState[r.road_id] = r;
             }
         }
-
-        list.innerHTML = ROADS.map(roadId => {
-            const pred = latest[roadId];
-            if (!pred) return '';
-            const score = pred.congestion_score;
-            const conf = pred.confidence != null ? pred.confidence : 0;
-            const color = getCongestionColor(score);
-            const label = getCongestionLabel(score);
-            const current = getCurrentCongestion(roadId);
-            const trend = getTrendInfo(current, score);
-            const pct = Math.round(score * 100);
-
-            return `<div class="prediction-card">
-                <div class="prediction-header">
-                    <span class="prediction-road">${ROAD_LABELS[roadId]}</span>
-                    <span class="prediction-trend ${trend.cls}">${trend.arrow} ${trend.label}</span>
-                </div>
-                <div class="prediction-bar-wrap">
-                    <div class="prediction-bar" style="width:${pct}%;background:${color}"></div>
-                </div>
-                <div class="prediction-meta">
-                    <span class="prediction-label" style="color:${color}">${label} (${pct}%)</span>
-                    <span class="prediction-confidence">${(conf * 100).toFixed(0)}% conf.</span>
-                </div>
-            </div>`;
-        }).join('');
-
-        if (tsEl && rows.length > 0) {
-            const t = new Date(rows[0].ts);
-            tsEl.textContent = `Updated ${t.toLocaleTimeString()}`;
+        // Re-render if a route is active
+        if (routingControl && navRoutesData.length > 0) {
+            showRoutePredictions(navRoutesData[activeRouteIndex]);
         }
-    } catch (err) {
-        console.error('[dashboard] load predictions:', err);
-        list.innerHTML = '<div class="empty-state">Could not load predictions</div>';
+    } catch (err) { console.error('[dashboard] fetch predictions:', err); }
+}
+
+function getRoadsNearRoute(route) {
+    const routeCoords = route.coordinates;
+    const nearRoads = [];
+    for (const [roadId, path] of Object.entries(ROAD_PATHS)) {
+        const isNear = path.some(roadPoint =>
+            routeCoords.some(routePoint =>
+                leafletMap.distance(L.latLng(roadPoint[0], roadPoint[1]), routePoint) < 150
+            )
+        );
+        if (isNear) nearRoads.push(roadId);
     }
+    return nearRoads;
+}
+
+function showRoutePredictions(route) {
+    const panel = document.getElementById('nav-predictions-panel');
+    const list = document.getElementById('nav-predictions-list');
+    if (!panel || !list) return;
+
+    const nearRoads = getRoadsNearRoute(route);
+    if (nearRoads.length === 0) { panel.classList.add('hidden'); return; }
+
+    const cards = nearRoads.map(roadId => {
+        const pred = predictionsState[roadId];
+        if (!pred) return '';
+        const score = pred.congestion_score;
+        const conf = pred.confidence != null ? pred.confidence : 0;
+        const color = getCongestionColor(score);
+        const label = getCongestionLabel(score);
+        const current = getCurrentCongestion(roadId);
+        const trend = getTrendInfo(current, score);
+        const pct = Math.round(score * 100);
+        const currentPct = current !== null ? Math.round(current * 100) : null;
+
+        return `<div class="prediction-card">
+            <div class="prediction-header">
+                <span class="prediction-road">${ROAD_LABELS[roadId]}</span>
+                <span class="prediction-trend ${trend.cls}">${trend.arrow} ${trend.label}</span>
+            </div>
+            <div class="prediction-bars">
+                <div class="prediction-bar-row">
+                    <span class="prediction-bar-label">Now</span>
+                    <div class="prediction-bar-wrap">
+                        <div class="prediction-bar" style="width:${currentPct ?? 0}%;background:${current !== null ? getCongestionColor(current) : '#334155'}"></div>
+                    </div>
+                    <span class="prediction-bar-value">${currentPct !== null ? currentPct + '%' : '--'}</span>
+                </div>
+                <div class="prediction-bar-row">
+                    <span class="prediction-bar-label">+30m</span>
+                    <div class="prediction-bar-wrap">
+                        <div class="prediction-bar" style="width:${pct}%;background:${color}"></div>
+                    </div>
+                    <span class="prediction-bar-value">${pct}%</span>
+                </div>
+            </div>
+            <div class="prediction-meta">
+                <span class="prediction-label" style="color:${color}">${label}</span>
+                <span class="prediction-confidence">${(conf * 100).toFixed(0)}% confidence</span>
+            </div>
+        </div>`;
+    }).filter(Boolean);
+
+    if (cards.length === 0) { panel.classList.add('hidden'); return; }
+
+    panel.classList.remove('hidden');
+    list.innerHTML = cards.join('');
 }
 
 // ── Navigation: Geocoder ──
@@ -514,19 +543,23 @@ function checkTrafficOnRoute(route) {
         }
     }
 
-    if (warnings.length === 0) { warningsPanel.classList.add('hidden'); return; }
-
-    warningsPanel.classList.remove('hidden');
-    warningsList.innerHTML = warnings.map(w => `
-        <div class="traffic-warning ${w.level}">
-            <span class="traffic-warning-icon">&#9888;</span>
-            <div class="traffic-warning-text">
-                <span class="traffic-warning-road">${w.label}</span>
-                &mdash; ${w.level === 'congested' ? 'Heavy traffic' : 'Moderate traffic'}
-                (${w.speed.toFixed(0)} km/h, ${(w.occupancy * 100).toFixed(0)}% occupancy)
+    if (warnings.length === 0) { warningsPanel.classList.add('hidden'); }
+    else {
+        warningsPanel.classList.remove('hidden');
+        warningsList.innerHTML = warnings.map(w => `
+            <div class="traffic-warning ${w.level}">
+                <span class="traffic-warning-icon">&#9888;</span>
+                <div class="traffic-warning-text">
+                    <span class="traffic-warning-road">${w.label}</span>
+                    &mdash; ${w.level === 'congested' ? 'Heavy traffic' : 'Moderate traffic'}
+                    (${w.speed.toFixed(0)} km/h, ${(w.occupancy * 100).toFixed(0)}% occupancy)
+                </div>
             </div>
-        </div>
-    `).join('');
+        `).join('');
+    }
+
+    // Show predictions for roads on this route
+    showRoutePredictions(route);
 }
 
 // ── Navigation: Clear ──
@@ -548,6 +581,7 @@ function clearNavRoute() {
 
     document.getElementById('nav-route-summary')?.classList.add('hidden');
     document.getElementById('nav-traffic-warnings')?.classList.add('hidden');
+    document.getElementById('nav-predictions-panel')?.classList.add('hidden');
     document.getElementById('nav-directions-panel')?.classList.add('hidden');
     document.getElementById('nav-click-hint')?.classList.remove('hidden');
     updateDirectionsButton();
@@ -601,21 +635,14 @@ export function renderDashboard(container, onLogout) {
                     <div id="nav-warnings-list"></div>
                 </div>
 
+                <div id="nav-predictions-panel" class="panel hidden">
+                    <h2><span class="icon">&#9201;</span> Predicted Traffic in 30min</h2>
+                    <div id="nav-predictions-list" class="predictions-list"></div>
+                </div>
+
                 <div id="nav-directions-panel" class="panel hidden">
                     <h2><span class="icon">&#10132;</span> Directions</h2>
                     <div id="nav-directions-list" class="directions-list"></div>
-                </div>
-            </div>
-
-            <div class="sidebar-right">
-                <div class="panel predictions-panel">
-                    <h2><span class="icon">&#9201;</span> Predictions T+30min</h2>
-                    <div id="predictions-list" class="predictions-list">
-                        <div class="empty-state">Loading predictions...</div>
-                    </div>
-                    <div class="predictions-footer">
-                        <span id="predictions-updated" class="predictions-ts"></span>
-                    </div>
                 </div>
             </div>
 
@@ -681,9 +708,9 @@ export function renderDashboard(container, onLogout) {
     // Load initial data
     loadInitialData();
 
-    // Load predictions and refresh every 60s
-    loadPredictions();
-    predictionsTimer = setInterval(loadPredictions, 60000);
+    // Fetch predictions into state and refresh every 60s
+    fetchPredictions();
+    predictionsTimer = setInterval(fetchPredictions, 60000);
 }
 
 export function destroyDashboard() {
@@ -700,4 +727,5 @@ export function destroyDashboard() {
     clearTimeout(navGeocoderTimeout);
     if (leafletMap) { leafletMap.remove(); leafletMap = null; }
     Object.keys(liveState).forEach(k => delete liveState[k]);
+    Object.keys(predictionsState).forEach(k => delete predictionsState[k]);
 }
