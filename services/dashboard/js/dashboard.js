@@ -1,6 +1,6 @@
 // CityFlow Dashboard — Leaflet map + navigation (Waze/Maps style)
 
-import { getTrafficLive, logout } from './api.js';
+import { getTrafficLive, getPredictions, logout } from './api.js';
 import { TrafficWebSocket } from './websocket.js';
 
 const ROADS = [
@@ -44,6 +44,7 @@ const ROAD_PATHS = {
 const liveState = {};
 let leafletMap = null;
 let ws = null;
+let predictionsTimer = null;
 
 // Navigation state
 let routingControl = null;
@@ -127,6 +128,95 @@ async function loadInitialData() {
             liveState[d.road_id] = d;
         }
     } catch (err) { console.error('[dashboard] load traffic:', err); }
+}
+
+// ── Predictions ──
+
+function getCurrentCongestion(roadId) {
+    const d = liveState[roadId];
+    if (!d) return null;
+    const speed = d.speed_kmh || 0;
+    const occ = d.occupancy || 0;
+    const speedScore = 1.0 - Math.min(speed / 90, 1);
+    const flowScore = Math.min((d.flow_rate || 0) / 120, 1);
+    return 0.4 * speedScore + 0.4 * occ + 0.2 * flowScore;
+}
+
+function getCongestionColor(score) {
+    if (score < 0.3) return 'var(--accent-green)';
+    if (score < 0.6) return 'var(--accent-yellow)';
+    return 'var(--accent-red)';
+}
+
+function getCongestionLabel(score) {
+    if (score < 0.3) return 'Free';
+    if (score < 0.6) return 'Moderate';
+    return 'Congested';
+}
+
+function getTrendInfo(current, predicted) {
+    if (current === null) return { arrow: '&mdash;', cls: 'stable', label: 'N/A' };
+    const delta = predicted - current;
+    if (delta > 0.08) return { arrow: '&#9650;', cls: 'up', label: `+${(delta * 100).toFixed(0)}%` };
+    if (delta < -0.08) return { arrow: '&#9660;', cls: 'down', label: `${(delta * 100).toFixed(0)}%` };
+    return { arrow: '&#9654;', cls: 'stable', label: 'Stable' };
+}
+
+async function loadPredictions() {
+    const list = document.getElementById('predictions-list');
+    const tsEl = document.getElementById('predictions-updated');
+    if (!list) return;
+
+    try {
+        const res = await getPredictions({ horizon: 30, limit: 50 });
+        const rows = res.data || [];
+        if (rows.length === 0) {
+            list.innerHTML = '<div class="empty-state">No predictions available yet</div>';
+            return;
+        }
+
+        // Latest prediction per road
+        const latest = {};
+        for (const r of rows) {
+            if (!latest[r.road_id] || r.ts > latest[r.road_id].ts) {
+                latest[r.road_id] = r;
+            }
+        }
+
+        list.innerHTML = ROADS.map(roadId => {
+            const pred = latest[roadId];
+            if (!pred) return '';
+            const score = pred.congestion_score;
+            const conf = pred.confidence != null ? pred.confidence : 0;
+            const color = getCongestionColor(score);
+            const label = getCongestionLabel(score);
+            const current = getCurrentCongestion(roadId);
+            const trend = getTrendInfo(current, score);
+            const pct = Math.round(score * 100);
+
+            return `<div class="prediction-card">
+                <div class="prediction-header">
+                    <span class="prediction-road">${ROAD_LABELS[roadId]}</span>
+                    <span class="prediction-trend ${trend.cls}">${trend.arrow} ${trend.label}</span>
+                </div>
+                <div class="prediction-bar-wrap">
+                    <div class="prediction-bar" style="width:${pct}%;background:${color}"></div>
+                </div>
+                <div class="prediction-meta">
+                    <span class="prediction-label" style="color:${color}">${label} (${pct}%)</span>
+                    <span class="prediction-confidence">${(conf * 100).toFixed(0)}% conf.</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        if (tsEl && rows.length > 0) {
+            const t = new Date(rows[0].ts);
+            tsEl.textContent = `Updated ${t.toLocaleTimeString()}`;
+        }
+    } catch (err) {
+        console.error('[dashboard] load predictions:', err);
+        list.innerHTML = '<div class="empty-state">Could not load predictions</div>';
+    }
 }
 
 // ── Navigation: Geocoder ──
@@ -517,6 +607,18 @@ export function renderDashboard(container, onLogout) {
                 </div>
             </div>
 
+            <div class="sidebar-right">
+                <div class="panel predictions-panel">
+                    <h2><span class="icon">&#9201;</span> Predictions T+30min</h2>
+                    <div id="predictions-list" class="predictions-list">
+                        <div class="empty-state">Loading predictions...</div>
+                    </div>
+                    <div class="predictions-footer">
+                        <span id="predictions-updated" class="predictions-ts"></span>
+                    </div>
+                </div>
+            </div>
+
         </div>`;
 
     // Logout
@@ -578,10 +680,15 @@ export function renderDashboard(container, onLogout) {
 
     // Load initial data
     loadInitialData();
+
+    // Load predictions and refresh every 60s
+    loadPredictions();
+    predictionsTimer = setInterval(loadPredictions, 60000);
 }
 
 export function destroyDashboard() {
     if (ws) { ws.disconnect(); ws = null; }
+    if (predictionsTimer) { clearInterval(predictionsTimer); predictionsTimer = null; }
     // Navigation cleanup (before map removal)
     if (routingControl) { leafletMap.removeControl(routingControl); routingControl = null; }
     if (navStartMarker) { leafletMap.removeLayer(navStartMarker); navStartMarker = null; }

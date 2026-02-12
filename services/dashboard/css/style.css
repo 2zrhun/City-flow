@@ -558,10 +558,119 @@ body {
 .nav-marker-start { background: var(--accent-green); }
 .nav-marker-end { background: var(--accent-red); }
 
+/* ── Right Sidebar (Predictions) ── */
+
+.sidebar-right {
+    position: absolute;
+    top: 56px;
+    right: 12px;
+    width: 280px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    max-height: calc(100vh - 68px);
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+}
+
+.sidebar-right::-webkit-scrollbar { width: 4px; }
+.sidebar-right::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+.predictions-panel { }
+
+.predictions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.prediction-card {
+    padding: 0.55rem 0.7rem;
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(51, 65, 133, 0.3);
+    border-radius: 8px;
+}
+
+.prediction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.prediction-road {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.prediction-trend {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.prediction-trend.up {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--accent-red);
+}
+
+.prediction-trend.down {
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--accent-green);
+}
+
+.prediction-trend.stable {
+    background: rgba(148, 163, 184, 0.15);
+    color: var(--text-secondary);
+}
+
+.prediction-bar-wrap {
+    height: 6px;
+    background: rgba(30, 41, 59, 0.9);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.prediction-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s ease, background 0.6s ease;
+}
+
+.prediction-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.62rem;
+}
+
+.prediction-label {
+    font-weight: 600;
+}
+
+.prediction-confidence {
+    color: var(--text-secondary);
+}
+
+.predictions-footer {
+    margin-top: 6px;
+    text-align: center;
+}
+
+.predictions-ts {
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 900px) {
     .sidebar-left { width: 260px; }
+    .sidebar-right { width: 240px; }
 }
 
 @media (max-width: 700px) {
@@ -572,5 +681,8 @@ body {
         max-height: 40vh;
         top: 50px;
         padding: 0 8px;
+    }
+    .sidebar-right {
+        display: none;
     }
 }
