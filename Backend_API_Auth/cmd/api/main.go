@@ -54,6 +54,7 @@ func main() {
 	trafficHandler := handlers.NewTrafficHandler(db, cache)
 	predictionHandler := handlers.NewPredictionHandler(db, cache)
 	rerouteHandler := handlers.NewRerouteHandler(db, cache)
+	roadsHandler := handlers.NewRoadsHandler(db, cache)
 
 	router := gin.Default()
 
@@ -71,6 +72,7 @@ func main() {
 	api.Use(middleware.JWTAuth(authService))
 	{
 		api.POST("/auth/logout", authHandler.Logout)
+		api.GET("/roads", roadsHandler.GetRoads)
 		api.GET("/traffic/live", trafficHandler.GetLive)
 		api.GET("/predictions", predictionHandler.GetPredictions)
 		api.GET("/reroutes/recommended", rerouteHandler.GetRecommended)

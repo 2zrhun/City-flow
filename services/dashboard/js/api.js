@@ -81,6 +81,10 @@ export async function getPredictions(options = {}) {
     return request('GET', `/api/predictions?${p.toString()}`);
 }
 
+export async function getRoads() {
+    return request('GET', '/api/roads');
+}
+
 export async function getReroutes(options = {}) {
     const p = new URLSearchParams();
     if (options.limit) p.set('limit', options.limit);

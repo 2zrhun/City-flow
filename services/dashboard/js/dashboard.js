@@ -1,44 +1,12 @@
 // CityFlow Dashboard — Leaflet map + navigation (Waze/Maps style)
+// Dynamic roads from Paris Open Data via /api/roads
 
-import { getTrafficLive, getPredictions, logout } from './api.js';
+import { getTrafficLive, getPredictions, getRoads, logout } from './api.js';
 import { TrafficWebSocket } from './websocket.js';
 
-const ROADS = [
-    'RING-NORTH-12', 'RING-SOUTH-09', 'CITY-CENTER-01',
-    'AIRPORT-AXIS-03', 'UNIVERSITY-LOOP-07'
-];
-
-const ROAD_LABELS = {
-    'RING-NORTH-12': 'Ring North 12',
-    'RING-SOUTH-09': 'Ring South 09',
-    'CITY-CENTER-01': 'City Center 01',
-    'AIRPORT-AXIS-03': 'Airport Axis 03',
-    'UNIVERSITY-LOOP-07': 'University Loop 07'
-};
-
-// Road coordinates — used for traffic proximity checks on routes
-const ROAD_PATHS = {
-    'RING-NORTH-12': [
-        [48.8720, 2.3200], [48.8730, 2.3280], [48.8735, 2.3380],
-        [48.8730, 2.3480], [48.8720, 2.3550]
-    ],
-    'RING-SOUTH-09': [
-        [48.8530, 2.3200], [48.8520, 2.3280], [48.8515, 2.3380],
-        [48.8520, 2.3480], [48.8530, 2.3550]
-    ],
-    'CITY-CENTER-01': [
-        [48.8650, 2.3320], [48.8640, 2.3350], [48.8625, 2.3380],
-        [48.8610, 2.3410], [48.8600, 2.3440]
-    ],
-    'AIRPORT-AXIS-03': [
-        [48.8720, 2.3200], [48.8680, 2.3180], [48.8630, 2.3170],
-        [48.8580, 2.3185], [48.8530, 2.3200]
-    ],
-    'UNIVERSITY-LOOP-07': [
-        [48.8720, 2.3550], [48.8680, 2.3570], [48.8630, 2.3580],
-        [48.8580, 2.3565], [48.8530, 2.3550]
-    ]
-};
+// ── Dynamic road state (fetched from API) ──
+let roadsData = {};       // road_id → { label, lat, lng }
+let trafficMarkers = {};  // road_id → L.circleMarker
 
 // State
 const liveState = {};
@@ -66,27 +34,98 @@ function getCongestionLevel(speed, occupancy) {
     return 'moderate';
 }
 
+function getCongestionColor(score) {
+    if (score < 0.3) return 'var(--accent-green)';
+    if (score < 0.6) return 'var(--accent-yellow)';
+    return 'var(--accent-red)';
+}
+
+function getCongestionHex(level) {
+    if (level === 'free') return '#4ade80';
+    if (level === 'congested') return '#ef4444';
+    return '#fbbf24';
+}
+
 // ── CO2 Estimation ──
 
 function estimateCO2(route) {
     const distKm = route.summary.totalDistance / 1000;
     const timeH = route.summary.totalTime / 3600;
     const avgSpeed = timeH > 0 ? distKm / timeH : 50;
-    let factor; // g CO2/km (speed-based emission curve)
-    if (avgSpeed < 15) factor = 280;       // heavy stop-and-go
-    else if (avgSpeed < 30) factor = 230;  // congested
-    else if (avgSpeed < 50) factor = 180;  // moderate urban
-    else if (avgSpeed < 80) factor = 150;  // free flow (optimal)
-    else factor = 170;                     // highway (less efficient)
-    return (factor * distKm) / 1000;       // kg CO2
+    let factor;
+    if (avgSpeed < 15) factor = 280;
+    else if (avgSpeed < 30) factor = 230;
+    else if (avgSpeed < 50) factor = 180;
+    else if (avgSpeed < 80) factor = 150;
+    else factor = 170;
+    return (factor * distKm) / 1000;
+}
+
+// ── Load roads from API ──
+
+async function loadRoads() {
+    try {
+        const res = await getRoads();
+        const roads = res.data || [];
+        roadsData = {};
+        for (const r of roads) {
+            if (r.lat && r.lng) {
+                roadsData[r.road_id] = {
+                    label: r.label || r.road_id,
+                    lat: r.lat,
+                    lng: r.lng
+                };
+            }
+        }
+        console.log(`[dashboard] loaded ${Object.keys(roadsData).length} roads from API`);
+    } catch (err) {
+        console.error('[dashboard] load roads:', err);
+    }
+}
+
+// ── Traffic markers on map ──
+
+function addTrafficMarkers() {
+    for (const [roadId, road] of Object.entries(roadsData)) {
+        if (trafficMarkers[roadId]) continue;
+        const marker = L.circleMarker([road.lat, road.lng], {
+            radius: 7,
+            fillColor: '#6b7280',
+            fillOpacity: 0.8,
+            color: '#1e293b',
+            weight: 2
+        }).addTo(leafletMap);
+        marker.bindTooltip(road.label, {
+            className: 'traffic-marker-tooltip',
+            direction: 'top',
+            offset: [0, -8]
+        });
+        trafficMarkers[roadId] = marker;
+    }
+}
+
+function updateMarkerColor(roadId) {
+    const marker = trafficMarkers[roadId];
+    if (!marker) return;
+    const data = liveState[roadId];
+    if (!data) return;
+    const level = getCongestionLevel(data.speed_kmh, data.occupancy);
+    const color = getCongestionHex(level);
+    marker.setStyle({ fillColor: color });
+
+    const road = roadsData[roadId];
+    const label = road ? road.label : roadId;
+    const speedStr = (data.speed_kmh || 0).toFixed(0);
+    const occStr = ((data.occupancy || 0) * 100).toFixed(0);
+    marker.setTooltipContent(`${label}<br>${speedStr} km/h | ${occStr}% occ`);
 }
 
 // ── Leaflet Map ──
 
 function initMap() {
     leafletMap = L.map('map', {
-        center: [48.8625, 2.3390],
-        zoom: 15,
+        center: [48.8566, 2.3522],
+        zoom: 13,
         zoomControl: true,
         attributionControl: false
     });
@@ -105,7 +144,6 @@ function initMap() {
 
 function handleTrafficUpdate(data) {
     const roadId = data.road_id;
-    if (!ROADS.includes(roadId)) return;
     liveState[roadId] = {
         speed_kmh: data.speed_kmh,
         flow_rate: data.flow_rate,
@@ -113,6 +151,19 @@ function handleTrafficUpdate(data) {
         ts: data.ts,
         sensor_id: data.sensor_id
     };
+
+    // If this is a new road from live data, register it
+    if (!roadsData[roadId] && data.lat && data.lng) {
+        roadsData[roadId] = {
+            label: data.label || roadId,
+            lat: data.lat,
+            lng: data.lng
+        };
+        addTrafficMarkers();
+    }
+
+    updateMarkerColor(roadId);
+
     if (routingControl && navRoutesData.length > 0) {
         checkTrafficOnRoute(navRoutesData[activeRouteIndex]);
     }
@@ -127,12 +178,16 @@ async function loadInitialData() {
         for (const d of sorted) {
             liveState[d.road_id] = d;
         }
+        // Color markers based on initial data
+        for (const roadId of Object.keys(liveState)) {
+            updateMarkerColor(roadId);
+        }
     } catch (err) { console.error('[dashboard] load traffic:', err); }
 }
 
 // ── Predictions ──
 
-const predictionsState = {}; // latest prediction per road_id
+const predictionsState = {};
 
 function getCurrentCongestion(roadId) {
     const d = liveState[roadId];
@@ -142,12 +197,6 @@ function getCurrentCongestion(roadId) {
     const speedScore = 1.0 - Math.min(speed / 90, 1);
     const flowScore = Math.min((d.flow_rate || 0) / 120, 1);
     return 0.4 * speedScore + 0.4 * occ + 0.2 * flowScore;
-}
-
-function getCongestionColor(score) {
-    if (score < 0.3) return 'var(--accent-green)';
-    if (score < 0.6) return 'var(--accent-yellow)';
-    return 'var(--accent-red)';
 }
 
 function getCongestionLabel(score) {
@@ -166,14 +215,13 @@ function getTrendInfo(current, predicted) {
 
 async function fetchPredictions() {
     try {
-        const res = await getPredictions({ horizon: 30, limit: 50 });
+        const res = await getPredictions({ horizon: 30, limit: 200 });
         const rows = res.data || [];
         for (const r of rows) {
             if (!predictionsState[r.road_id] || r.ts > predictionsState[r.road_id].ts) {
                 predictionsState[r.road_id] = r;
             }
         }
-        // Re-render if a route is active
         if (routingControl && navRoutesData.length > 0) {
             showRoutePredictions(navRoutesData[activeRouteIndex]);
         }
@@ -183,11 +231,10 @@ async function fetchPredictions() {
 function getRoadsNearRoute(route) {
     const routeCoords = route.coordinates;
     const nearRoads = [];
-    for (const [roadId, path] of Object.entries(ROAD_PATHS)) {
-        const isNear = path.some(roadPoint =>
-            routeCoords.some(routePoint =>
-                leafletMap.distance(L.latLng(roadPoint[0], roadPoint[1]), routePoint) < 150
-            )
+    for (const [roadId, road] of Object.entries(roadsData)) {
+        const roadPoint = L.latLng(road.lat, road.lng);
+        const isNear = routeCoords.some(routePoint =>
+            leafletMap.distance(roadPoint, routePoint) < 500
         );
         if (isNear) nearRoads.push(roadId);
     }
@@ -213,10 +260,11 @@ function showRoutePredictions(route) {
         const trend = getTrendInfo(current, score);
         const pct = Math.round(score * 100);
         const currentPct = current !== null ? Math.round(current * 100) : null;
+        const roadLabel = roadsData[roadId]?.label || roadId;
 
         return `<div class="prediction-card">
             <div class="prediction-header">
-                <span class="prediction-road">${ROAD_LABELS[roadId]}</span>
+                <span class="prediction-road">${roadLabel}</span>
                 <span class="prediction-trend ${trend.cls}">${trend.arrow} ${trend.label}</span>
             </div>
             <div class="prediction-bars">
@@ -444,7 +492,6 @@ function renderRouteSummary(routes) {
     if (!container || !panel) return;
     panel.classList.remove('hidden');
 
-    // Compute CO2 for all routes and find the greenest
     const co2Values = routes.map(r => estimateCO2(r));
     const minCO2 = Math.min(...co2Values);
 
@@ -520,22 +567,21 @@ function checkTrafficOnRoute(route) {
     const routeCoords = route.coordinates;
     const warnings = [];
 
-    for (const [roadId, path] of Object.entries(ROAD_PATHS)) {
+    for (const [roadId, road] of Object.entries(roadsData)) {
         const roadData = liveState[roadId];
         if (!roadData) continue;
         const level = getCongestionLevel(roadData.speed_kmh, roadData.occupancy);
         if (level === 'free') continue;
 
-        const isNearRoute = path.some(roadPoint =>
-            routeCoords.some(routePoint =>
-                leafletMap.distance(L.latLng(roadPoint[0], roadPoint[1]), routePoint) < 150
-            )
+        const roadPoint = L.latLng(road.lat, road.lng);
+        const isNearRoute = routeCoords.some(routePoint =>
+            leafletMap.distance(roadPoint, routePoint) < 500
         );
 
         if (isNearRoute) {
             warnings.push({
                 roadId,
-                label: ROAD_LABELS[roadId],
+                label: road.label,
                 level,
                 speed: roadData.speed_kmh,
                 occupancy: roadData.occupancy
@@ -558,7 +604,6 @@ function checkTrafficOnRoute(route) {
         `).join('');
     }
 
-    // Show predictions for roads on this route
     showRoutePredictions(route);
 }
 
@@ -705,18 +750,19 @@ export function renderDashboard(container, onLogout) {
     ws = new TrafficWebSocket(handleTrafficUpdate, setStatus);
     ws.connect();
 
-    // Load initial data
-    loadInitialData();
+    // Load roads first, then initial data + markers + predictions
+    loadRoads().then(() => {
+        loadInitialData();
+        addTrafficMarkers();
+        fetchPredictions();
+    });
 
-    // Fetch predictions into state and refresh every 60s
-    fetchPredictions();
     predictionsTimer = setInterval(fetchPredictions, 60000);
 }
 
 export function destroyDashboard() {
     if (ws) { ws.disconnect(); ws = null; }
     if (predictionsTimer) { clearInterval(predictionsTimer); predictionsTimer = null; }
-    // Navigation cleanup (before map removal)
     if (routingControl) { leafletMap.removeControl(routingControl); routingControl = null; }
     if (navStartMarker) { leafletMap.removeLayer(navStartMarker); navStartMarker = null; }
     if (navEndMarker) { leafletMap.removeLayer(navEndMarker); navEndMarker = null; }
@@ -728,4 +774,6 @@ export function destroyDashboard() {
     if (leafletMap) { leafletMap.remove(); leafletMap = null; }
     Object.keys(liveState).forEach(k => delete liveState[k]);
     Object.keys(predictionsState).forEach(k => delete predictionsState[k]);
+    roadsData = {};
+    trafficMarkers = {};
 }

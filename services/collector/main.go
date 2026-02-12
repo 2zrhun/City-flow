@@ -25,6 +25,9 @@ type TrafficPayload struct {
 	SpeedKMH  float64 `json:"speed_kmh"`
 	FlowRate  float64 `json:"flow_rate"`
 	Occupancy float64 `json:"occupancy"`
+	Label     string  `json:"label"`
+	Lat       float64 `json:"lat"`
+	Lng       float64 `json:"lng"`
 }
 
 var (
@@ -62,6 +65,19 @@ func main() {
 
 	if err := dbPool.Ping(ctx); err != nil {
 		log.Fatalf("db ping failed: %v", err)
+	}
+
+	// Ensure roads metadata table exists
+	if _, err := dbPool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS roads (
+			road_id    TEXT PRIMARY KEY,
+			label      TEXT NOT NULL DEFAULT '',
+			lat        DOUBLE PRECISION,
+			lng        DOUBLE PRECISION,
+			updated_at TIMESTAMPTZ DEFAULT NOW()
+		)
+	`); err != nil {
+		log.Printf("roads table creation warning: %v", err)
 	}
 
 	if redisURL != "" {
@@ -176,6 +192,17 @@ func processMessage(ctx context.Context, dbPool *pgxpool.Pool, payloadRaw []byte
 	}
 
 	msgsStored.Inc()
+
+	// Upsert road metadata if coordinates are present
+	if payload.Lat != 0 && payload.Lng != 0 {
+		_, _ = dbPool.Exec(ctx, `
+			INSERT INTO roads (road_id, label, lat, lng, updated_at)
+			VALUES ($1, $2, $3, $4, NOW())
+			ON CONFLICT (road_id) DO UPDATE SET
+				label = EXCLUDED.label, lat = EXCLUDED.lat,
+				lng = EXCLUDED.lng, updated_at = NOW()
+		`, payload.RoadID, payload.Label, payload.Lat, payload.Lng)
+	}
 
 	if redisClient != nil {
 		_ = redisClient.Publish(ctx, "cityflow:live", payloadRaw).Err()
