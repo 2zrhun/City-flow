@@ -26,3 +26,4 @@ Thumbs.db
 
 # Local volumes/export files
 *.log
+Backend_API_Auth/backend-api

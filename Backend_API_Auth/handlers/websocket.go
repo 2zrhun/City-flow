@@ -53,6 +53,11 @@ func LiveWebSocket(cache *services.CacheService, authService *services.AuthServi
 
 		// Subscribe to Redis pub/sub channel
 		pubsub := cache.Subscribe(ctx, "cityflow:live")
+		if pubsub == nil {
+			log.Printf("websocket: Redis unavailable, closing connection")
+			conn.WriteJSON(gin.H{"type": "error", "data": "live updates unavailable"})
+			return
+		}
 		defer pubsub.Close()
 
 		ch := pubsub.Channel()

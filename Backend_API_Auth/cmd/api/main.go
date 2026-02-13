@@ -44,7 +44,7 @@ func main() {
 
 	cache, err := services.NewCacheService(cfg.Redis)
 	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+		log.Printf("WARNING: Redis unavailable, running without cache: %v", err)
 	}
 	defer cache.Close()
 

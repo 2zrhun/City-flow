@@ -16,7 +16,7 @@ spec:
       containers:
         - name: backend-api-auth
           image: {{ .Values.backendApiAuth.image }}
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:

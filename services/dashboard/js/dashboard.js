@@ -86,38 +86,11 @@ async function loadRoads() {
 // ── Traffic markers on map ──
 
 function addTrafficMarkers() {
-    for (const [roadId, road] of Object.entries(roadsData)) {
-        if (trafficMarkers[roadId]) continue;
-        const marker = L.circleMarker([road.lat, road.lng], {
-            radius: 7,
-            fillColor: '#6b7280',
-            fillOpacity: 0.8,
-            color: '#1e293b',
-            weight: 2
-        }).addTo(leafletMap);
-        marker.bindTooltip(road.label, {
-            className: 'traffic-marker-tooltip',
-            direction: 'top',
-            offset: [0, -8]
-        });
-        trafficMarkers[roadId] = marker;
-    }
+    // Markers hidden — road data still used for route proximity checks
 }
 
 function updateMarkerColor(roadId) {
-    const marker = trafficMarkers[roadId];
-    if (!marker) return;
-    const data = liveState[roadId];
-    if (!data) return;
-    const level = getCongestionLevel(data.speed_kmh, data.occupancy);
-    const color = getCongestionHex(level);
-    marker.setStyle({ fillColor: color });
-
-    const road = roadsData[roadId];
-    const label = road ? road.label : roadId;
-    const speedStr = (data.speed_kmh || 0).toFixed(0);
-    const occStr = ((data.occupancy || 0) * 100).toFixed(0);
-    marker.setTooltipContent(`${label}<br>${speedStr} km/h | ${occStr}% occ`);
+    // Markers hidden — no visual update needed
 }
 
 // ── Leaflet Map ──
